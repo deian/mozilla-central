@@ -327,7 +327,9 @@ static void
 DEBUG_CheckUnwrapSafety(HandleObject obj, js::Wrapper *handler,
                         JSCompartment *origin, JSCompartment *target)
 {
-    if (AccessCheck::isChrome(target) || xpc::IsUniversalXPConnectEnabled(target)) {
+    if (handler == &FilteringWrapper<CrossCompartmentSecurityWrapper, SandboxPolicy>::singleton ||
+        handler == &FilteringWrapper<SecurityXrayXPCWN, SandboxPolicy>::singleton) {
+    } else if (AccessCheck::isChrome(target) || xpc::IsUniversalXPConnectEnabled(target)) {
         // If the caller is chrome (or effectively so), unwrap should always be allowed.
         MOZ_ASSERT(handler->isSafeToUnwrap());
     } else if (WrapperFactory::IsComponentsObject(obj)) {
@@ -360,23 +362,26 @@ SelectWrapper(bool securityWrapper, bool wantXrays, XrayType xrayType,
     // If we don't want or can't use Xrays, select a wrapper that's either
     // entirely transparent or entirely opaque.
     if (!wantXrays || xrayType == NotXray) {
-        if (!securityWrapper)
+        if (!securityWrapper) {
             return &CrossCompartmentWrapper::singleton;
+        }
         return &FilteringWrapper<CrossCompartmentSecurityWrapper, Opaque>::singleton;
     }
 
     // Ok, we're using Xray. If this isn't a security wrapper, use the permissive
     // version and skip the filter.
     if (!securityWrapper) {
-        if (xrayType == XrayForWrappedNative)
+        if (xrayType == XrayForWrappedNative) {
             return &PermissiveXrayXPCWN::singleton;
+        }
         return &PermissiveXrayDOM::singleton;
     }
 
     // This is a security wrapper. Use the security versions and filter.
-    if (xrayType == XrayForWrappedNative)
+    if (xrayType == XrayForWrappedNative) {
         return &FilteringWrapper<SecurityXrayXPCWN,
                                  CrossOriginAccessiblePropertiesOnly>::singleton;
+    }
     return &FilteringWrapper<SecurityXrayDOM,
                              CrossOriginAccessiblePropertiesOnly>::singleton;
 }
@@ -407,6 +412,11 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     XrayType xrayType = GetXrayType(obj);
     bool waiveXrayFlag = flags & WAIVE_XRAY_WRAPPER_FLAG;
 
+    bool originIsSandbox = xpc::sandbox::IsCompartmentSandboxed(origin);
+    bool targetIsSandbox = xpc::sandbox::IsCompartmentSandboxed(target);
+
+
+
     // By default we use the wrapped proto of the underlying object as the
     // prototype for our wrapper, but we may select something different below.
     RootedObject proxyProto(cx, wrappedProto);
@@ -431,7 +441,7 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     // If content is accessing a Components object or NAC, we need a special filter,
     // even if the object is same origin. Note that we allow access to NAC for
     // remote-XUL whitelisted domains, since they don't have XBL scopes.
-    } else if (IsComponentsObject(obj) && !AccessCheck::isChrome(target)) {
+    } else if (IsComponentsObject(obj) && !targetIsChrome) {
         wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper,
                                     ComponentsObjectPolicy>::singleton;
     } else if (AccessCheck::needsSystemOnlyWrapper(obj) &&
@@ -453,6 +463,14 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
              IsXBLScope(target))
     {
         wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper, GentlyOpaque>::singleton;
+    }
+    else if (!originIsChrome && !targetIsChrome && 
+             (targetIsSandbox || originIsSandbox)) {
+        if (xrayType == XrayForWrappedNative) {
+            wrapper = &FilteringWrapper<SecurityXrayXPCWN, SandboxPolicy>::singleton;
+        } else {
+            wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper, SandboxPolicy>::singleton;
+        }
     }
 
     //

@@ -59,8 +59,12 @@ EXPORTS.mozilla.dom += [
     'DocumentFragment.h',
     'DocumentType.h',
     'EventSource.h',
+    'Label.h',
     'Link.h',
     'NodeIterator.h',
+    'Privilege.h',
+    'Role.h',
+    'Sandbox.h',
     'Text.h',
     'TreeWalker.h',
 ]
@@ -77,8 +81,12 @@ CPP_SOURCES += [
     'EventSource.cpp',
     'FileIOObject.cpp',
     'FragmentOrElement.cpp',
+    'Label.cpp',
     'Link.cpp',
     'NodeIterator.cpp',
+    'Privilege.cpp',
+    'Role.cpp',
+    'Sandbox.cpp',
     'Text.cpp',
     'ThirdPartyUtil.cpp',
     'TreeWalker.cpp',
@@ -162,6 +170,8 @@ EXTRA_COMPONENTS += [
     'contentSecurityPolicy.manifest',
     'messageWakeupService.js',
     'messageWakeupService.manifest',
+    'sandboxInitializer.js',
+    'sandboxInitializer.manifest',
 ]
 
 EXTRA_PP_COMPONENTS += [

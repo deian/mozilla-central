@@ -1963,8 +1963,13 @@ nsScriptSecurityManager::doGetObjectPrincipal(JS::Handle<JSObject*> aObj)
     // object principals directly off the compartment always gives an equivalent
     // result (from a security perspective).
 #ifdef DEBUG
+    bool principalIsNull, oldIsNull;
+    
     nsIPrincipal *old = old_doGetObjectPrincipal(aObj);
-    MOZ_ASSERT(NS_SUCCEEDED(CheckSameOriginPrincipal(principal, old)));
+    MOZ_ASSERT(NS_SUCCEEDED(CheckSameOriginPrincipal(principal, old)) ||
+              (NS_SUCCEEDED(old->GetIsNullPrincipal(&oldIsNull)) &&
+               NS_SUCCEEDED(principal->GetIsNullPrincipal(&principalIsNull)) &&
+               oldIsNull && principalIsNull));
 #endif
 
     return principal;

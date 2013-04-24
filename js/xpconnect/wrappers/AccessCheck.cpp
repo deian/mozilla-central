@@ -160,6 +160,22 @@ IsPermitted(const char *name, JSFlatString *prop, bool set)
     return false;
 }
 
+static bool
+IsPostMessage(const char *name, JSFlatString *prop)
+{
+    size_t propLength;
+    const jschar *propChars =
+        JS_GetInternedStringCharsAndLength(JS_FORGET_STRING_FLATNESS(prop), &propLength);
+    if (!propLength)
+        return false;
+    bool set = false;
+    switch (name[0]) {
+        NAME('W', "Window",
+             PROP('p', R("postMessage")))
+    }
+    return false;
+}
+
 #undef NAME
 #undef RW
 #undef R
@@ -432,4 +448,137 @@ ComponentsObjectPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, W
     return false;
 }
 
+// Is compartment an addon-sdk content script
+static bool
+isAddonSDK(JSContext *cx, JSCompartment *compartment)
+{ 
+    RootedObject sandbox(cx, 
+            js::CheckedUnwrap(JS_GetGlobalForCompartmentOrNull(compartment)));
+    if (sandbox && xpc::IsSandbox(sandbox)) {
+        RootedValue metadata(cx);
+        nsresult rv = xpc::GetSandboxMetadata(cx, sandbox, &metadata);
+        if (NS_SUCCEEDED(rv) && metadata.isObject()) {
+            RootedObject obj(cx, &metadata.toObject());
+            RootedValue isAddon(cx);
+            if (JS_GetProperty(cx, obj, "isAddonSDK", &isAddon) &&
+                    JSVAL_IS_BOOLEAN(isAddon) &&
+                    JSVAL_TO_BOOLEAN(isAddon)) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
+
+bool
+SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::Action act)
+{
+    RootedObject wrapper(cx, wrapperArg);
+    RootedId id(cx, idArg);
+    RootedObject wrapped(cx, Wrapper::wrappedObject(wrapper));
+
+    bool isPostMessage = false;
+    {
+        const char *name;
+        const js::Class *clasp = js::GetObjectClass(wrapped);
+        NS_ASSERTION(Jsvalify(clasp) != &XrayUtils::HolderClass, 
+                     "shouldn't have a holder here");
+        if (clasp->ext.innerObject)
+            name = "Window";
+        else
+            name = clasp->name;
+
+        if (JSID_IS_STRING(id))
+            isPostMessage = IsPostMessage(name,JSID_TO_FLAT_STRING(id));
+
+#if 1
+        printf("SandboxPolicy::check id=%s ", name); 
+        if (JSID_IS_STRING(id)) {
+        size_t propLength=0;
+        const jschar *propChars =
+            JS_GetInternedStringCharsAndLength(
+                    JS_FORGET_STRING_FLATNESS(JSID_TO_FLAT_STRING(id)),
+                    &propLength);
+        for (size_t i=0;i<propLength;i++) {
+            printf("%c", propChars[i]);
+        }
+        }
+        printf("\n");
+#endif
+    }
+
+
+    // Information flows from the wrapped to the wrapper
+    // The two are swapped for postMessage
+    JSCompartment *fromCompartment = isPostMessage 
+                                     ? js::GetObjectCompartment(wrapper)
+                                     : js::GetObjectCompartment(wrapped),
+                  *toCompartment   = isPostMessage 
+                                     ? js::GetObjectCompartment(wrapped)
+                                     : js::GetObjectCompartment(wrapper);
+
+#if 1
+    {
+        printf("SandboxPolicy::check %s\n", 
+                act == Wrapper::SET ? "SET" :
+                act == Wrapper::CALL ? "CALL" : "GET");
+        {
+            char *origin;
+            GetCompartmentPrincipal(fromCompartment)->GetOrigin(&origin);
+            printf("SandboxPolicy::check %s ", origin); 
+            nsMemory::Free(origin);
+        }
+        {
+            char *origin;
+            GetCompartmentPrincipal(toCompartment)->GetOrigin(&origin);
+            printf(" to %s\n\n", origin); 
+            nsMemory::Free(origin);
+        }
+    }
+#endif
+
+
+    // neither one is a sandbox
+    if (sandbox::IsCompartmentSandboxMode(toCompartment) &&
+        sandbox::IsCompartmentSandboxMode(fromCompartment)) {
+        // Both compartments are content
+
+        // Is this allowed by same origin policy? If not, do not allow it
+        if (!AccessCheck::isCrossOriginAccessPermitted(cx, wrapperArg, 
+                                                       idArg, act)) {
+            NS_WARNING("Cross origin SOP check failed");
+            return false;
+        }
+    } 
+
+    // Treat addons as trusted
+    // TODO: check sanity here
+    if (isAddonSDK(cx, toCompartment) || isAddonSDK(cx, fromCompartment)) {
+        return true;
+    }
+
+
+    if (!isPostMessage) {
+        //set or call ==> READ & WRITE with privs of the fromCompartment
+        // fromCompartment [=_from toCompartment
+        if (sandbox::GuardRead(toCompartment, fromCompartment, true)) {
+            // toCompartment [=_from fromCompartment
+            bool ok = sandbox::GuardRead(fromCompartment, toCompartment, false);
+            if (!ok)
+                NS_WARNING("Read/write guard failed");
+            return ok;
+        }
+        NS_WARNING("Read/write guard failed");
+        return false;
+    } else { // is postMessage
+        bool ok = sandbox::GuardRead(toCompartment, fromCompartment, 
+                                  act == Wrapper::GET);
+                // /* useFromCompartmentPrivs = */ !isPostMessage);
+        if (!ok)
+            NS_WARNING("postMessage read guard failed");
+        return ok;
+    }
+
+}
+
+} // namespace xpc

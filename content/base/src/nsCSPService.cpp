@@ -110,8 +110,12 @@ CSPService::ShouldLoad(uint32_t aContentType,
   nsCOMPtr<nsINode> node(do_QueryInterface(aRequestContext));
   nsCOMPtr<nsIPrincipal> principal;
   nsCOMPtr<nsIContentSecurityPolicy> csp;
-  if (node) {
+  if (node)
     principal = node->NodePrincipal();
+  if (!principal) // fallback on request principal
+    principal = aRequestPrincipal;
+
+  if (principal) {
     principal->GetCsp(getter_AddRefs(csp));
 
     if (csp) {
@@ -146,7 +150,7 @@ CSPService::ShouldLoad(uint32_t aContentType,
     nsAutoCString uriSpec;
     aContentLocation->GetSpec(uriSpec);
     PR_LOG(gCspPRLog, PR_LOG_DEBUG,
-           ("COULD NOT get nsINode for location: %s", uriSpec.get()));
+           ("COULD NOT get princiapl or nsINode for location: %s", uriSpec.get()));
   }
 #endif
 
@@ -178,8 +182,12 @@ CSPService::ShouldProcess(uint32_t         aContentType,
   nsCOMPtr<nsINode> node(do_QueryInterface(aRequestContext));
   nsCOMPtr<nsIPrincipal> principal;
   nsCOMPtr<nsIContentSecurityPolicy> csp;
-  if (node) {
+  if (node)
     principal = node->NodePrincipal();
+  if (!principal) // fallback on request principal
+    principal = aRequestPrincipal;
+
+  if (principal) {
     principal->GetCsp(getter_AddRefs(csp));
 
     if (csp) {
@@ -213,7 +221,7 @@ CSPService::ShouldProcess(uint32_t         aContentType,
     nsAutoCString uriSpec;
     aContentLocation->GetSpec(uriSpec);
     PR_LOG(gCspPRLog, PR_LOG_DEBUG,
-           ("COULD NOT get nsINode for location: %s", uriSpec.get()));
+           ("COULD NOT get principal or nsINode for location: %s", uriSpec.get()));
   }
 #endif
   return NS_OK;
