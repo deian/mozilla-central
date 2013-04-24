@@ -457,6 +457,9 @@ xpc_JSZoneParticipant();
 namespace mozilla {
 namespace dom {
 
+class Label;
+class Sandbox;
+
 extern int HandlerFamily;
 inline void* ProxyFamily() { return &HandlerFamily; }
 
@@ -499,5 +502,60 @@ typedef void* (*DeferredFinalizeStartFunction)();
 // data is the pointer returned by DeferredFinalizeStartFunction.
 // Return value indicates whether it finalized all objects in the buffer.
 typedef bool (*DeferredFinalizeFunction)(uint32_t slice, void* data);
+
+// Sandbox related
+namespace xpc {
+namespace sandbox {
+
+// Turn compartment into a Sandboxed compartment. Setting the
+// label and clearance to the public label.
+NS_EXPORT_(void) EnableCompartmentSandbox(JSCompartment *compartment,
+                                          mozilla::dom::Sandbox *assocSandbox = nullptr);
+
+// Is the compartment sandboxed
+NS_EXPORT_(bool) IsSandboxedCompartment(JSCompartment *compartment);
+
+// Get the underlying associated sandbox
+NS_EXPORT_(mozilla::dom::Sandbox*) GetCompartmentAssocSandbox(JSCompartment *compartment);
+
+
+#define DEFINE_GET_LABEL(name)                        \
+    NS_EXPORT_(already_AddRefed<mozilla::dom::Label>) \
+    GetCompartment##name(JSCompartment *compartment);
+
+#define DEFINE_SET_LABEL(name)                         \
+    NS_EXPORT_(void)                                   \
+    SetCompartment##name(JSCompartment *compartment,   \
+                         mozilla::dom::Label *aLabel);
+
+// Compartment label
+DEFINE_SET_LABEL(PrivacyLabel);
+DEFINE_GET_LABEL(PrivacyLabel);
+
+DEFINE_SET_LABEL(TrustLabel);
+DEFINE_GET_LABEL(TrustLabel);
+
+// Compartment clearance
+DEFINE_SET_LABEL(PrivacyClearance);
+DEFINE_GET_LABEL(PrivacyClearance);
+
+DEFINE_SET_LABEL(TrustClearance);
+DEFINE_GET_LABEL(TrustClearance);
+
+#undef DEFINE_SET_LABEL
+#undef DEFINE_GET_LABEL
+
+
+// Can information flow form source to compartment
+NS_EXPORT_(bool)
+GuardRead(JSCompartment *compartment, JSCompartment *source);
+
+// Can information flow to compartment from object labeld with privacy and trust
+NS_EXPORT_(bool)
+GuardRead(JSCompartment *compatment,
+          mozilla::dom::Label &privacy, mozilla::dom::Label &trust);
+
+} // namespace sandbox
+} // namespace xpc
 
 #endif

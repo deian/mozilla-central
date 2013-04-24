@@ -180,6 +180,9 @@
 #include "SandboxPrivate.h"
 #include "BackstagePass.h"
 
+#include "mozilla/dom/Label.h"
+#include "mozilla/dom/Sandbox.h"
+
 #ifdef XP_WIN
 // Nasty MS defines
 #ifdef GetClassInfo
@@ -3881,6 +3884,90 @@ GetRTIdByIndex(JSContext *cx, unsigned index);
 
 namespace xpc {
 
+namespace sandbox {
+// Class used to encapsulate the compartment label and clearance
+// TODO: refactor to distringuish between sandboxes and labeled content
+class CompartmentLabels
+{
+public:
+    inline bool IsSandboxedCompartment() {
+        return !!privacyLabel && !!trustLabel;
+    }
+
+
+    // compartment label
+
+    inline void SetPrivacyLabel(mozilla::dom::Label *aLabel) {
+        if (!aLabel)
+            return;
+        privacyLabel = aLabel;
+    }
+    inline already_AddRefed<mozilla::dom::Label> GetPrivacyLabel() {
+        if (!privacyLabel)
+            return nullptr;
+        nsRefPtr<mozilla::dom::Label> l = privacyLabel;
+        return l.forget();
+    }
+    inline void SetTrustLabel(mozilla::dom::Label *aLabel) {
+        if(!aLabel)
+            return;
+        trustLabel = aLabel;
+    }
+    inline already_AddRefed<mozilla::dom::Label> GetTrustLabel() {
+        if (!trustLabel)
+            return nullptr;
+        nsRefPtr<mozilla::dom::Label> l = trustLabel;
+        return l.forget();
+    }
+
+    // compartment label
+
+    inline void SetPrivacyClearance(mozilla::dom::Label *aLabel) {
+        if (!aLabel)
+            return;
+        privacyClearance = aLabel;
+    }
+    inline already_AddRefed<mozilla::dom::Label> GetPrivacyClearance() {
+        if (!privacyClearance)
+            return nullptr;
+        nsRefPtr<mozilla::dom::Label> l = privacyClearance;
+        return l.forget();
+    }
+    inline void SetTrustClearance(mozilla::dom::Label *aLabel) {
+        if(!aLabel)
+            return;
+        trustClearance = aLabel;
+    }
+    inline already_AddRefed<mozilla::dom::Label> GetTrustClearance() {
+        if (!trustClearance)
+            return nullptr;
+        nsRefPtr<mozilla::dom::Label> l = trustClearance;
+        return l.forget();
+    }
+
+    inline void SetAssocSandbox(mozilla::dom::Sandbox *box) {
+        assocSandbox = box;
+    }
+    mozilla::dom::Sandbox* GetAssocSandbox() {
+        return assocSandbox;
+    }
+
+    ~CompartmentLabels() {
+        privacyLabel     = nullptr;
+        trustLabel       = nullptr;
+        privacyClearance = nullptr;
+        trustClearance   = nullptr;
+        assocSandbox     = nullptr;
+    }
+
+private:
+    nsRefPtr<mozilla::dom::Label> privacyLabel, trustLabel;
+    nsRefPtr<mozilla::dom::Label> privacyClearance, trustClearance;
+    // associated sandbox
+    mozilla::dom::Sandbox* assocSandbox;
+};
+} //namespace sandbox
+
 class CompartmentPrivate
 {
 public:
@@ -3928,6 +4015,8 @@ public:
             return;
         locationURI = aLocationURI;
     }
+
+    sandbox::CompartmentLabels labels;
 
 private:
     nsCString location;

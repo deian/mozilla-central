@@ -35,6 +35,7 @@ CPP_SOURCES += [
     'XPCModule.cpp',
     'XPCQuickStubs.cpp',
     'XPCRuntimeService.cpp',
+    'XPCSandbox.cpp',
     'XPCStack.cpp',
     'XPCString.cpp',
     'XPCThrower.cpp',

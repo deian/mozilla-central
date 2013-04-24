@@ -326,7 +326,8 @@ static void
 DEBUG_CheckUnwrapSafety(HandleObject obj, js::Wrapper *handler,
                         JSCompartment *origin, JSCompartment *target)
 {
-    if (AccessCheck::isChrome(target) || xpc::IsUniversalXPConnectEnabled(target)) {
+    if (handler == &FilteringWrapper<CrossCompartmentSecurityWrapper, SandboxPolicy>::singleton) {
+    } else if (AccessCheck::isChrome(target) || xpc::IsUniversalXPConnectEnabled(target)) {
         // If the caller is chrome (or effectively so), unwrap should always be allowed.
         MOZ_ASSERT(handler->isSafeToUnwrap());
     } else if (WrapperFactory::IsComponentsObject(obj)) {
@@ -406,6 +407,11 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     XrayType xrayType = GetXrayType(obj);
     bool waiveXrayFlag = flags & WAIVE_XRAY_WRAPPER_FLAG;
 
+    bool originIsSandbox = xpc::sandbox::IsSandboxedCompartment(origin);
+    bool targetIsSandbox = xpc::sandbox::IsSandboxedCompartment(target);
+
+
+
     // By default we use the wrapped proto of the underlying object as the
     // prototype for our wrapper, but we may select something different below.
     RootedObject proxyProto(cx, wrappedProto);
@@ -430,7 +436,7 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     // If content is accessing a Components object or NAC, we need a special filter,
     // even if the object is same origin. Note that we allow access to NAC for
     // remote-XUL whitelisted domains, since they don't have XBL scopes.
-    } else if (IsComponentsObject(obj) && !AccessCheck::isChrome(target)) {
+    } else if (IsComponentsObject(obj) && !targetIsChrome) {
         wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper,
                                     ComponentsObjectPolicy>::singleton;
     } else if (AccessCheck::needsSystemOnlyWrapper(obj) &&
@@ -452,6 +458,21 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
              IsXBLScope(target))
     {
         wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper, GentlyOpaque>::singleton;
+    }
+    else if (!originIsChrome && !targetIsChrome && 
+             (targetIsSandbox || originIsSandbox)) {
+
+        //TODO: handle xray
+#if 0
+        if(!originIsIfc) {
+            xpc::sandbox::EnableCompartmentSandbox(origin);
+        }
+        if(!targetIsIfc) {
+            xpc::sandbox::EnableCompartmentSandbox(target);
+        }
+#endif
+
+        wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper, SandboxPolicy>::singleton;
     }
 
     //

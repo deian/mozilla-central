@@ -165,6 +165,7 @@ webidl_files = \
   InspectorUtils.webidl \
   KeyboardEvent.webidl \
   KeyEvent.webidl \
+  Label.webidl \
   LinkStyle.webidl \
   LocalMediaStream.webidl \
   Location.webidl \
@@ -204,12 +205,14 @@ webidl_files = \
   Range.webidl \
   Rect.webidl \
   RGBColor.webidl \
+  Role.webidl \
   RTCConfiguration.webidl \
   RTCDataChannelEvent.webidl \
   RTCIceCandidate.webidl \
   RTCPeerConnection.webidl \
   RTCPeerConnectionIceEvent.webidl \
   RTCSessionDescription.webidl \
+  Sandbox.webidl \
   Screen.webidl \
   ScriptProcessorNode.webidl \
   ScrollAreaEvent.webidl \

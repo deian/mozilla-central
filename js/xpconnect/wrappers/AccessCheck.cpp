@@ -438,4 +438,35 @@ ComponentsObjectPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, W
     return false;
 }
 
+bool
+SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::Action act)
+{
+    if (act == Wrapper::SET) {
+        NS_WARNING("SET is not allowed");
+    }
+
+    RootedObject wrapper(cx, wrapperArg);
+    RootedId id(cx, idArg);
+    RootedObject wrapped(cx, Wrapper::wrappedObject(wrapper));
+
+    //return true;//TODO: rm
+    if (act == Wrapper::CALL) {
+        NS_WARNING("Allowing CALL cross compartment since objects are guaranteed to be structured");
+    }
+
+    //if (act == Wrapper::GET)
+    {
+        //information flows from the wrapped to the wrapper; use wrapper's privilege
+        bool res = xpc::sandbox::GuardRead(js::GetObjectCompartment(wrapper),
+                                           js::GetObjectCompartment(wrapped));
+
+        if (!res) 
+            NS_WARNING("GuardRead failed to taint compartment");
+
+        return res;
+    }
+
+    return false;
 }
+
+} // xpc
