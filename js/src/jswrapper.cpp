@@ -300,18 +300,11 @@ CrossCompartmentWrapper::get(JSContext *cx, HandleObject wrapper, HandleObject r
 {
     RootedObject receiverCopy(cx, receiver);
     RootedId idCopy(cx, id);
-    {
-        AutoCompartment call(cx, wrappedObject(wrapper));
-        if (!cx->compartment->wrap(cx, receiverCopy.address()) ||
-            !cx->compartment->wrapId(cx, idCopy.address()))
-        {
-            return false;
-        }
-
-        if (!Wrapper::get(cx, wrapper, receiverCopy, idCopy, vp))
-            return false;
-    }
-    return cx->compartment->wrap(cx, vp);
+    PIERCE(cx, wrapper,
+           cx->compartment->wrap(cx, receiverCopy.address()) &&
+           cx->compartment->wrapId(cx, idCopy.address()),
+           Wrapper::get(cx, wrapper, receiverCopy, idCopy, vp),
+           cx->compartment->wrap(cx, vp));
 }
 
 bool
