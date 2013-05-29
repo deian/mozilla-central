@@ -3811,6 +3811,37 @@ CreateGlobalObject(JSContext *cx, JSClass *clasp, nsIPrincipal *principal,
                    JS::ZoneSpecifier zoneSpec);
 }
 
+
+/***************************************************************************/
+// ContextHolder related
+
+namespace xpc {
+
+class ContextHolder : public nsIScriptObjectPrincipal
+{
+public:
+    ContextHolder(JSContext *aOuterCx, JS::HandleObject aSandbox, nsIPrincipal *aPrincipal);
+    virtual ~ContextHolder();
+
+    JSContext * GetJSContext()
+    {
+        return mJSContext;
+    }
+
+    nsIPrincipal * GetPrincipal() { return mPrincipal; }
+
+    NS_DECL_ISUPPORTS
+
+private:
+    static JSBool ContextHolderOperationCallback(JSContext *cx);
+
+    JSContext* mJSContext;
+    JSContext* mOrigCx;
+    nsCOMPtr<nsIPrincipal> mPrincipal;
+};
+
+} // xpc
+
 // Helper for creating a sandbox object to use for evaluating
 // untrusted code completely separated from all other code in the
 // system using xpc_EvalInSandbox(). Takes the JSContext on which to

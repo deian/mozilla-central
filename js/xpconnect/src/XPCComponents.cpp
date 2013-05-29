@@ -3722,28 +3722,9 @@ nsXPCComponents_utils_Sandbox::CallOrConstruct(nsIXPConnectWrappedNative *wrappe
     return rv;
 }
 
-class ContextHolder : public nsIScriptObjectPrincipal
-{
-public:
-    ContextHolder(JSContext *aOuterCx, HandleObject aSandbox, nsIPrincipal *aPrincipal);
-    virtual ~ContextHolder();
 
-    JSContext * GetJSContext()
-    {
-        return mJSContext;
-    }
-
-    nsIPrincipal * GetPrincipal() { return mPrincipal; }
-
-    NS_DECL_ISUPPORTS
-
-private:
-    static JSBool ContextHolderOperationCallback(JSContext *cx);
-
-    JSContext* mJSContext;
-    JSContext* mOrigCx;
-    nsCOMPtr<nsIPrincipal> mPrincipal;
-};
+/***************************************************************************/
+// ContextHolder related
 
 NS_IMPL_ISUPPORTS1(ContextHolder, nsIScriptObjectPrincipal)
 
