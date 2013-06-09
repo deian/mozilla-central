@@ -187,6 +187,9 @@ private:
   nsRefPtr<Label> mCurrentPrivacy;
   nsRefPtr<Label> mCurrentTrust;
 
+  // What is the underlying sandbox principal
+  nsCOMPtr<nsIPrincipal> mPrincipal;
+
   // Underlying sandbox object
   JSObject* mSandboxObj;
 
