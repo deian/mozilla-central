@@ -9,11 +9,11 @@
 #include "mozilla/dom/LabelBinding.h"
 #include "mozilla/dom/SandboxBinding.h"
 #include "nsContentUtils.h"
+#include "nsIContentSecurityPolicy.h"
 #include "nsEventDispatcher.h"
 #include "xpcprivate.h"
 #include "xpccomponents.h"
 #include "mozilla/dom/StructuredCloneUtils.h"
-#include "XPCQuickStubs.h"
 
 namespace mozilla {
 namespace dom {
@@ -56,6 +56,10 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(Sandbox,
                                                   nsDOMEventTargetHelper)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPrivacy)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mTrust)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCurrentPrivacy)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCurrentTrust)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPrincipal)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mEventTarget)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE_SCRIPT_OBJECTS
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -65,6 +69,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(Sandbox,
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mTrust)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mCurrentPrivacy)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mCurrentTrust)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mPrincipal)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mEventTarget)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
   tmp->Destroy();
@@ -107,6 +112,7 @@ Sandbox::Sandbox(mozilla::dom::Label& privacy)
   , mTrust(new Label())
   , mCurrentPrivacy(nullptr)
   , mCurrentTrust(nullptr)
+  , mPrincipal(nullptr)
   , mSandboxObj(nullptr)
   , mResult(JSVAL_VOID)
   , mResultType(ResultNone)
@@ -122,6 +128,7 @@ Sandbox::Sandbox(mozilla::dom::Label& privacy, mozilla::dom::Label& trust)
   , mTrust(&trust)
   , mCurrentPrivacy(nullptr)
   , mCurrentTrust(nullptr)
+  , mPrincipal(nullptr)
   , mSandboxObj(nullptr)
   , mResult(JSVAL_VOID)
   , mResultType(ResultNone)
@@ -142,6 +149,7 @@ Sandbox::Destroy()
   mTrust = nullptr;
   mCurrentPrivacy = nullptr;
   mCurrentTrust = nullptr;
+  mPrincipal = nullptr;
   mSandboxObj = nullptr;
   mResult = JSVAL_VOID;
   mEventTarget = nullptr;
@@ -790,33 +798,65 @@ Sandbox::SetOnmessageForSandbox(mozilla::dom::EventHandlerNonNull* aCallback,
   mEventTarget->SetOnmessage(aCallback, aRv);
 }
 
+
 void
 Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
 {
   nsresult rv;
 
   xpc::SandboxOptions options(cx);
-  options.wantXrays      = false;
-  options.wantComponents = false;
-  options.wantXHRConstructor = true;
+  options.wantComponents     = false;
+  options.wantXrays          = false; //FIXME
+  options.wantXHRConstructor = false;
+
+  // Set the sandbox principal and add CSP policy that restrict
+  // network communication accordingly
 
   nsCOMPtr<nsIPrincipal> principal = mPrivacy->GetPrincipalIfSingleton();
 
-  if (!principal) {
-    principal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
-    if(NS_FAILED(rv)) { 
-      aRv.Throw(rv);
-      return;
+  if (principal) {
+    // "clone" the principal
+    nsCOMPtr<nsIURI> uri;
+    rv = principal->GetURI(getter_AddRefs(uri));
+    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+
+    nsCOMPtr<nsIScriptSecurityManager> secMan =
+      nsContentUtils::GetSecurityManager();
+    if(!secMan) { aRv.Throw(NS_ERROR_FAILURE); return; }
+    rv = secMan->GetNoAppCodebasePrincipal(uri, getter_AddRefs(mPrincipal));
+
+    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+
+    nsCOMPtr<nsIContentSecurityPolicy> csp =
+      do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
+
+    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+
+    if (csp) {
+      nsString policy = NS_LITERAL_STRING("default-src 'none'; \
+                                           connect-src 'self';");
+      csp->RefinePolicy(policy, uri, true);
+      rv = mPrincipal->SetCsp(csp);
+      if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+      options.wantXHRConstructor = true;
     }
   }
+  else {
+    mPrincipal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
+    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+    options.wantXHRConstructor = false;
+  }
+
+
+  // Create sandbox object
 
   JS::RootedValue sandboxVal(cx, JS::UndefinedValue());
 
   rv = xpc_CreateSandboxObject(cx,                   //JSContext *cx, 
                                sandboxVal.address(), //jsval *vp, 
-                               principal,            //nsISupports *prinOrSop, 
+                               mPrincipal,           //nsISupports *prinOrSop, 
                                options);             //SandboxOptions& options)
-  if(NS_FAILED(rv)) { 
+  if (NS_FAILED(rv)) { 
     aRv.Throw(rv);
     return;
   }
@@ -839,12 +879,12 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
       mozilla::dom::LabelBinding::CreateInterfaceObjects(cx, sandboxObj, pAI);
       mozilla::dom::SandboxBinding::CreateInterfaceObjects(cx, sandboxObj, pAI);
     }
+    //TODO: check if any of these fail
     JS_DefineFunction(cx, sandboxObj, "done", SandboxDone, 1, 0);
     JS_DefineFunction(cx, sandboxObj, "onmessage", SandboxOnmessage, 1, 0);
     JS_DefineProperty(cx, sandboxObj, "message", JSVAL_VOID,
                       SandboxGetMessage, NULL,
                       JSPROP_ENUMERATE | JSPROP_SHARED);
-
   }
 
   NS_HOLD_JS_OBJECTS(this, Sandbox);
