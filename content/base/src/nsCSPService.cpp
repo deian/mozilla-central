@@ -104,40 +104,49 @@ CSPService::ShouldLoad(uint32_t aContentType,
         return NS_OK;
     }
 
-    // find the principal of the document that initiated this request and see
-    // if it has a CSP policy object
-    nsCOMPtr<nsINode> node(do_QueryInterface(aRequestContext));
-    nsCOMPtr<nsIPrincipal> principal;
-    nsCOMPtr<nsIContentSecurityPolicy> csp;
-    if (node) {
-        principal = node->NodePrincipal();
-        principal->GetCsp(getter_AddRefs(csp));
 
-        if (csp) {
+    if (!aRequestPrincipal) {
+      // If we don't have aRequestPrincipal, try getting it from the
+      // DOM node using aRequestingContext
+      nsCOMPtr<nsINode> node(do_QueryInterface(aRequestContext));
+
+      if (node)
+        aRequestPrincipal = node->NodePrincipal();
+    }
+
+    // If we have the principal of that initiated this request, see
+    // if it has a CSP policy object
+
+    if (aRequestPrincipal) {
+      nsCOMPtr<nsIContentSecurityPolicy> csp;
+      aRequestPrincipal->GetCsp(getter_AddRefs(csp));
+
+      if (csp) {
 #ifdef PR_LOGGING
-            nsAutoString policy;
-            csp->GetPolicy(policy);
-            PR_LOG(gCspPRLog, PR_LOG_DEBUG,
-                    ("Document has CSP: %s",
-                     NS_ConvertUTF16toUTF8(policy).get()));
+        nsAutoString policy;
+        csp->GetPolicy(policy);
+        PR_LOG(gCspPRLog, PR_LOG_DEBUG,
+            ("Document has CSP: %s",
+             NS_ConvertUTF16toUTF8(policy).get()));
 #endif
-            // obtain the enforcement decision
-            // (don't pass aExtra, we use that slot for redirects)
-            csp->ShouldLoad(aContentType,
-                            aContentLocation,
-                            aRequestOrigin,
-                            aRequestContext,
-                            aMimeTypeGuess,
-                            nullptr,
-                            aDecision);
-        }
+        // obtain the enforcement decision
+        // (don't pass aExtra, we use that slot for redirects)
+        csp->ShouldLoad(aContentType,
+                        aContentLocation,
+                        aRequestOrigin,
+                        aRequestContext,
+                        aMimeTypeGuess,
+                        nullptr,
+                        aDecision);
+      }
     }
 #ifdef PR_LOGGING
     else {
-        nsAutoCString uriSpec;
-        aContentLocation->GetSpec(uriSpec);
-        PR_LOG(gCspPRLog, PR_LOG_DEBUG,
-            ("COULD NOT get nsINode for location: %s", uriSpec.get()));
+      nsAutoCString uriSpec;
+      aContentLocation->GetSpec(uriSpec);
+      PR_LOG(gCspPRLog, PR_LOG_DEBUG,
+             ("DOES NOT have request principal and \
+              COULD NOT get nsINode for location: %s", uriSpec.get()));
     }
 #endif
 
@@ -164,39 +173,47 @@ CSPService::ShouldProcess(uint32_t         aContentType,
     if (!sCSPEnabled)
         return NS_OK;
 
-    // find the nsDocument that initiated this request and see if it has a
-    // CSP policy object
-    nsCOMPtr<nsINode> node(do_QueryInterface(aRequestContext));
-    nsCOMPtr<nsIPrincipal> principal;
-    nsCOMPtr<nsIContentSecurityPolicy> csp;
-    if (node) {
-        principal = node->NodePrincipal();
-        principal->GetCsp(getter_AddRefs(csp));
+    if (!aRequestPrincipal) {
+      // If we don't have aRequestPrincipal, try getting it from the
+      // DOM node using aRequestingContext
+      nsCOMPtr<nsINode> node(do_QueryInterface(aRequestContext));
 
-        if (csp) {
+      if (node)
+        aRequestPrincipal = node->NodePrincipal();
+    }
+
+    // If we have the principal of that initiated this request, see
+    // if it has a CSP policy object
+
+    if (aRequestPrincipal) {
+      nsCOMPtr<nsIContentSecurityPolicy> csp;
+      aRequestPrincipal->GetCsp(getter_AddRefs(csp));
+
+      if (csp) {
 #ifdef PR_LOGGING
-            nsAutoString policy;
-            csp->GetPolicy(policy);
-            PR_LOG(gCspPRLog, PR_LOG_DEBUG,
-                  ("shouldProcess - document has policy: %s",
-                    NS_ConvertUTF16toUTF8(policy).get()));
+        nsAutoString policy;
+        csp->GetPolicy(policy);
+        PR_LOG(gCspPRLog, PR_LOG_DEBUG,
+            ("shouldProcess - document has policy: %s",
+             NS_ConvertUTF16toUTF8(policy).get()));
 #endif
-            // obtain the enforcement decision
-            csp->ShouldProcess(aContentType,
-                               aContentLocation,
-                               aRequestOrigin,
-                               aRequestContext,
-                               aMimeTypeGuess,
-                               aExtra,
-                               aDecision);
-        }
+        // obtain the enforcement decision
+        csp->ShouldProcess(aContentType,
+                           aContentLocation,
+                           aRequestOrigin,
+                           aRequestContext,
+                           aMimeTypeGuess,
+                           aExtra,
+                           aDecision);
+      }
     }
 #ifdef PR_LOGGING
     else {
-        nsAutoCString uriSpec;
-        aContentLocation->GetSpec(uriSpec);
-        PR_LOG(gCspPRLog, PR_LOG_DEBUG,
-            ("COULD NOT get nsINode for location: %s", uriSpec.get()));
+      nsAutoCString uriSpec;
+      aContentLocation->GetSpec(uriSpec);
+      PR_LOG(gCspPRLog, PR_LOG_DEBUG,
+             ("DOES NOT have request principal and \
+              COULD NOT get nsINode for location: %s", uriSpec.get()));
     }
 #endif
     return NS_OK;
