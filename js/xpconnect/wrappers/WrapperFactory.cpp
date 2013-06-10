@@ -463,15 +463,13 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     else if (!originIsChrome && !targetIsChrome && 
              (targetIsSandbox || originIsSandbox)) {
 
-        //TODO: handle xray
-#if 0
-        if(!originIsIfc) {
+        // if either compartment is not a sandbox, turn it so we use the proper label
+        if(!originIsSandbox) {
             xpc::sandbox::EnableCompartmentSandbox(origin);
         }
-        if(!targetIsIfc) {
+        if(!targetIsSandbox) {
             xpc::sandbox::EnableCompartmentSandbox(target);
         }
-#endif
 
         wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper, SandboxPolicy>::singleton;
     }
