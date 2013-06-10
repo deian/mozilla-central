@@ -231,7 +231,7 @@ Sandbox::Schedule(JSContext* cx, const nsAString& src, ErrorResult& aRv)
   nsRefPtr<Label> callerT =
     xpc::sandbox::GetCompartmentTrustLabel(compartment);
 
-  if (MOZ_UNLIKELY(!xpc::sandbox::IsSandboxedCompartment(compartment))) {
+  if (MOZ_UNLIKELY(!xpc::sandbox::IsCompartmentSandboxed(compartment))) {
     //should not be here
     xpc::sandbox::EnableCompartmentSandbox(compartment);
     callerP = xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
@@ -272,7 +272,7 @@ Sandbox::Ondone(JSContext* cx, EventHandlerNonNull* successHandler,
 
   JSCompartment *compartment = js::GetContextCompartment(cx);
 
-  if (!xpc::sandbox::IsSandboxedCompartment(compartment))
+  if (MOZ_UNLIKELY(!xpc::sandbox::IsCompartmentSandboxed(compartment)))
     xpc::sandbox::EnableCompartmentSandbox(compartment);
 
   if (!xpc::sandbox::GuardRead(compartment,*mPrivacy,*mTrust)) {
@@ -365,6 +365,37 @@ Sandbox::Trust() const
   return trust.forget();
 }
 
+already_AddRefed<Label>
+Sandbox::CurrentPrivacy() const
+{
+  nsRefPtr<Label> privacy = mCurrentPrivacy;
+  return privacy.forget();
+}
+
+// Caller should ensure that this label subsumes the current label and
+// is subsumed by the sanbox label
+void 
+Sandbox::SetCurrentPrivacy(mozilla::dom::Label* aLabel)
+{
+  mCurrentPrivacy = aLabel;
+}
+
+already_AddRefed<Label>
+Sandbox::CurrentTrust() const
+{
+  nsRefPtr<Label> trust = mCurrentTrust;
+  return trust.forget();
+}
+
+// Caller should ensure that this label subsumes the sandbox label and
+// is subsumed by the current label
+void
+Sandbox::SetCurrentTrust(mozilla::dom::Label* aLabel) 
+{
+  mCurrentTrust = aLabel;
+}
+
+
 JS::Value
 Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) const {
   // Wrap the result
@@ -438,7 +469,7 @@ Sandbox::IsSandboxed(const GlobalObject& global)
 {
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
-  return xpc::sandbox::IsSandboxedCompartment(compartment);
+  return xpc::sandbox::IsCompartmentSandboxed(compartment);
 }
 
 // label
@@ -648,7 +679,7 @@ SandboxDone(JSContext *cx, unsigned argc, jsval *vp)
 
   JSCompartment* compartment = js::GetContextCompartment(cx);
   mozilla::dom::Sandbox* sandbox =
-    xpc::sandbox::GetCompartmentAssocSandbox(compartment);
+    xpc::sandbox::GetCompartmentSandbox(compartment);
 
   MOZ_ASSERT(sandbox); // must be in sandboxed compartment
 
@@ -671,7 +702,7 @@ SandboxOnmessage(JSContext *cx, unsigned argc, jsval *vp)
   // in sandbox:
   JSCompartment* compartment = js::GetContextCompartment(cx);
   mozilla::dom::Sandbox* sandbox =
-    xpc::sandbox::GetCompartmentAssocSandbox(compartment);
+    xpc::sandbox::GetCompartmentSandbox(compartment);
 
   MOZ_ASSERT(sandbox); // must be in sandboxed compartment
 
@@ -727,7 +758,7 @@ SandboxGetMessage(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
   // in sandbox:
   JSCompartment* compartment = js::GetContextCompartment(cx);
   mozilla::dom::Sandbox* sandbox =
-    xpc::sandbox::GetCompartmentAssocSandbox(compartment);
+    xpc::sandbox::GetCompartmentSandbox(compartment);
 
   MOZ_ASSERT(sandbox); // must be in sandboxed compartment
 
@@ -748,8 +779,6 @@ Sandbox::RaiseLabel(JSCompartment *compartment)
 {
   xpc::sandbox::SetCompartmentPrivacyLabel(compartment, mPrivacy);
   xpc::sandbox::SetCompartmentTrustLabel(compartment, mTrust);
-  mCurrentPrivacy = mPrivacy;
-  mCurrentTrust = mTrust;
 }
 
 // This function tries to dispatch an event. It fails silently if it
@@ -932,12 +961,6 @@ Sandbox::EvalInSandbox(JSContext *cx, const nsAString& source, ErrorResult &aRv)
 
         JSCompartment *compartment = js::GetObjectCompartment(sandbox);
         xpc::sandbox::EnableCompartmentSandbox(compartment, this);
-        // set label
-        xpc::sandbox::SetCompartmentPrivacyLabel(compartment, mCurrentPrivacy);
-        xpc::sandbox::SetCompartmentTrustLabel(compartment, mCurrentTrust);
-        // set clearance
-        xpc::sandbox::SetCompartmentPrivacyClearance(compartment, mPrivacy);
-        xpc::sandbox::SetCompartmentTrustClearance(compartment, mTrust);
 
         JS::CompileOptions options(sandcx);
         options.setPrincipals(nsJSPrincipals::get(prin))

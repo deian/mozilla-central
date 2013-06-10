@@ -408,8 +408,8 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     XrayType xrayType = GetXrayType(obj);
     bool waiveXrayFlag = flags & WAIVE_XRAY_WRAPPER_FLAG;
 
-    bool originIsSandbox = xpc::sandbox::IsSandboxedCompartment(origin);
-    bool targetIsSandbox = xpc::sandbox::IsSandboxedCompartment(target);
+    bool originIsSandbox = xpc::sandbox::IsCompartmentSandboxed(origin);
+    bool targetIsSandbox = xpc::sandbox::IsCompartmentSandboxed(target);
 
 
 

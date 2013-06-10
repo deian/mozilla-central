@@ -453,43 +453,48 @@ bool IsChromeOrXBL(JSContext* cx, JSObject* /* unused */);
 namespace xpc {
 namespace sandbox {
 
-// Turn compartment into a Sandboxed compartment. Setting the
-// label and clearance to the public label.
-NS_EXPORT_(void) EnableCompartmentSandbox(JSCompartment *compartment,
-                                          mozilla::dom::Sandbox *assocSandbox = nullptr);
+// Turn compartment into a Sandboxed compartment. If a sandbox is provided the
+// compartment sandbox is set; otherwise sandbox-mode is enabled with the
+// compartment label iset to the public label.
+NS_EXPORT_(void)
+EnableCompartmentSandbox(JSCompartment *compartment,
+                         mozilla::dom::Sandbox *sandbox = nullptr);
 
-// Is the compartment sandboxed
-NS_EXPORT_(bool) IsSandboxedCompartment(JSCompartment *compartment);
-
-// Get the underlying associated sandbox
-NS_EXPORT_(mozilla::dom::Sandbox*) GetCompartmentAssocSandbox(JSCompartment *compartment);
+// Is the compartment a sandbox or in sandbox-mode
+NS_EXPORT_(bool)
+IsCompartmentSandboxed(JSCompartment *compartment);
 
 
-#define DEFINE_GET_LABEL(name)                        \
+#define DECLARE_SET_LABEL(name)                       \
+    NS_EXPORT_(void)                                  \
+    SetCompartment##name(JSCompartment *compartment,  \
+                         mozilla::dom::Label *aLabel);
+
+#define DECLARE_GET_LABEL(name)                       \
     NS_EXPORT_(already_AddRefed<mozilla::dom::Label>) \
     GetCompartment##name(JSCompartment *compartment);
 
-#define DEFINE_SET_LABEL(name)                         \
-    NS_EXPORT_(void)                                   \
-    SetCompartment##name(JSCompartment *compartment,   \
-                         mozilla::dom::Label *aLabel);
-
 // Compartment label
-DEFINE_SET_LABEL(PrivacyLabel);
-DEFINE_GET_LABEL(PrivacyLabel);
+DECLARE_SET_LABEL(PrivacyLabel);
+DECLARE_GET_LABEL(PrivacyLabel);
 
-DEFINE_SET_LABEL(TrustLabel);
-DEFINE_GET_LABEL(TrustLabel);
+DECLARE_SET_LABEL(TrustLabel);
+DECLARE_GET_LABEL(TrustLabel);
 
 // Compartment clearance
-DEFINE_SET_LABEL(PrivacyClearance);
-DEFINE_GET_LABEL(PrivacyClearance);
+DECLARE_SET_LABEL(PrivacyClearance);
+DECLARE_GET_LABEL(PrivacyClearance);
 
-DEFINE_SET_LABEL(TrustClearance);
-DEFINE_GET_LABEL(TrustClearance);
+DECLARE_SET_LABEL(TrustClearance);
+DECLARE_GET_LABEL(TrustClearance);
 
-#undef DEFINE_SET_LABEL
-#undef DEFINE_GET_LABEL
+#undef DECLARE_SET_LABEL
+#undef DECLARE_GET_LABEL
+
+// If the compartment is a sandbox, return the associated sandbox. If the
+// compartment is in sandbox-mode, return nullptr.
+NS_EXPORT_(mozilla::dom::Sandbox*)
+GetCompartmentSandbox(JSCompartment *compartment);
 
 
 // Can information flow form source to compartment

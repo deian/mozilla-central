@@ -19,6 +19,12 @@
 
 struct JSContext;
 
+namespace xpc {
+namespace sandbox {
+  class SandboxConfig;
+};
+};
+
 namespace mozilla {
 namespace dom {
 
@@ -29,7 +35,6 @@ public:
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(SandboxEventTarget,
                                                          nsDOMEventTargetHelper)
 
-public:
   SandboxEventTarget()
   {
     SetIsDOMBinding();
@@ -52,15 +57,14 @@ public:
 
 class Sandbox MOZ_FINAL : public nsDOMEventTargetHelper
 {
-public:
+public: // New types =========================================================
   enum ResultType { ResultNone, ResultValue, ResultError };
 
-public:
+public: // DOM interface =====================================================
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(Sandbox,
                                                          nsDOMEventTargetHelper)
 
-public:
   Sandbox();
   Sandbox(mozilla::dom::Label& privacy);
   Sandbox(mozilla::dom::Label& privacy, mozilla::dom::Label& trust);
@@ -73,7 +77,8 @@ public:
     return GetOwner();
   }
 
-  JSObject* WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope) MOZ_OVERRIDE
+  JSObject* WrapObject(JSContext* aCx, 
+                       JS::Handle<JSObject*> aScope) MOZ_OVERRIDE
   {
     return SandboxBinding::Wrap(aCx, aScope, this);
   }
@@ -101,7 +106,8 @@ public:
               const Optional<nsRefPtr<EventHandlerNonNull> >& errorHandler,
               ErrorResult& aRv);
 
-  void PostMessage(JSContext* cx, JS::Handle<JS::Value> message, ErrorResult& aRv);
+  void PostMessage(JSContext* cx, JS::Handle<JS::Value> message, 
+                   ErrorResult& aRv);
 
   IMPL_EVENT_HANDLER(message)
   IMPL_EVENT_HANDLER(error)
@@ -124,7 +130,7 @@ public:
   bool SetMessageToHandle(JSContext *cx, JS::MutableHandleValue vp);
 
 
-public: // Static ============================================================
+public: // Static DOM interface ==============================================
 
   static void EnableSandbox(const GlobalObject& global);
   static bool IsSandboxed(const GlobalObject& global);
@@ -172,6 +178,16 @@ public: // Internal ==========================================================
                               mozilla::ErrorResult& aRv);
   // Dispatch the onmessage event _in_ the sandbox
   void DispatchSandboxOnmessageEvent(ErrorResult& aRv);
+
+protected: // Unsafe functions ===============================================
+  // These functions are part of the trusted computing base and should
+  // not be exposed to untrusted code
+  already_AddRefed<Label> CurrentPrivacy() const;
+  already_AddRefed<Label> CurrentTrust() const;
+  void SetCurrentPrivacy(mozilla::dom::Label* aLabel);
+  void SetCurrentTrust(mozilla::dom::Label* aLabel);
+
+  friend class xpc::sandbox::SandboxConfig;
 
 private:
 

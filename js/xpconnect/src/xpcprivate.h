@@ -3677,86 +3677,121 @@ GetRTIdByIndex(JSContext *cx, unsigned index);
 namespace xpc {
 
 namespace sandbox {
-// Class used to encapsulate the compartment label and clearance
-// TODO: refactor to distringuish between sandboxes and labeled content
-class CompartmentLabels
+
+/* Class used to encapsulate the compartment labels. A compartment can either
+ * be a sandbox, in which case it has an explicit mozilla::dom::Sandbox
+ * associated with it, or it can be in sandbox-mode, in which case it has a
+ * set of labels associated with it. */
+class SandboxConfig
 {
 public:
-    inline bool IsSandboxedCompartment() {
-        return !!privacyLabel && !!trustLabel;
+
+    // Is the compartment a sandbox or did we enable sandbox-mode by setting
+    // the compartment labels.
+    inline bool Enabled() {
+        return isSandbox() || isSandboxMode();
     }
 
-
-    // compartment label
-
-    inline void SetPrivacyLabel(mozilla::dom::Label *aLabel) {
-        if (!aLabel)
-            return;
-        privacyLabel = aLabel;
-    }
-    inline already_AddRefed<mozilla::dom::Label> GetPrivacyLabel() {
-        if (!privacyLabel)
-            return nullptr;
-        nsRefPtr<mozilla::dom::Label> l = privacyLabel;
-        return l.forget();
-    }
-    inline void SetTrustLabel(mozilla::dom::Label *aLabel) {
-        if(!aLabel)
-            return;
-        trustLabel = aLabel;
-    }
-    inline already_AddRefed<mozilla::dom::Label> GetTrustLabel() {
-        if (!trustLabel)
-            return nullptr;
-        nsRefPtr<mozilla::dom::Label> l = trustLabel;
-        return l.forget();
+    // Is the compartment a sandbox?
+    inline bool isSandbox() {
+        return !!mSandbox;
     }
 
-    // compartment label
-
-    inline void SetPrivacyClearance(mozilla::dom::Label *aLabel) {
-        if (!aLabel)
-            return;
-        privacyClearance = aLabel;
-    }
-    inline already_AddRefed<mozilla::dom::Label> GetPrivacyClearance() {
-        if (!privacyClearance)
-            return nullptr;
-        nsRefPtr<mozilla::dom::Label> l = privacyClearance;
-        return l.forget();
-    }
-    inline void SetTrustClearance(mozilla::dom::Label *aLabel) {
-        if(!aLabel)
-            return;
-        trustClearance = aLabel;
-    }
-    inline already_AddRefed<mozilla::dom::Label> GetTrustClearance() {
-        if (!trustClearance)
-            return nullptr;
-        nsRefPtr<mozilla::dom::Label> l = trustClearance;
-        return l.forget();
+    // Is the compartment in sandbox mode
+    inline bool isSandboxMode() {
+        return  !!mPrivacyLabel && !!mTrustLabel;
     }
 
-    inline void SetAssocSandbox(mozilla::dom::Sandbox *box) {
-        assocSandbox = box;
-    }
-    mozilla::dom::Sandbox* GetAssocSandbox() {
-        return assocSandbox;
+    // Is the compartment in sandbox mode
+    inline bool HaveClerance() {
+        return  !!mPrivacyClearance && !!mTrustClearance;
     }
 
-    ~CompartmentLabels() {
-        privacyLabel     = nullptr;
-        trustLabel       = nullptr;
-        privacyClearance = nullptr;
-        trustClearance   = nullptr;
-        assocSandbox     = nullptr;
+#define DEFINE_SET_LABEL(name, sboxSetter)                           \
+    inline void Set##name(mozilla::dom::Label *aLabel) {             \
+        NS_ASSERTION(aLabel, "Set##name called with null label!");   \
+        if (isSandbox()) {                                           \
+           mSandbox->sboxSetter(aLabel);                             \
+        } else {                                                     \
+          (m##name) = aLabel;                                        \
+        }                                                            \
+    }
+
+#define DEFINE_GET_LABEL(name, sboxGetter)                      \
+    inline already_AddRefed<mozilla::dom::Label> Get##name() {  \
+        nsRefPtr<mozilla::dom::Label> l = isSandbox() ?         \
+          mSandbox->sboxGetter() : (m##name);                   \
+        if (!l)                                                 \
+            return nullptr;                                     \
+        return l.forget();                                      \
+    }
+
+#define DEFINE_SET_CLEARANCE(name)                                     \
+    inline void Set##name(mozilla::dom::Label *aLabel) {               \
+        NS_ASSERTION(aLabel, "Set##name called with null label!");     \
+        NS_ASSERTION(isSandboxMode(), "Set##name called on sandbox!"); \
+        (m##name) = aLabel;                                            \
+    }
+
+    // Compartment label
+    DEFINE_SET_LABEL(PrivacyLabel, SetCurrentPrivacy);
+    DEFINE_GET_LABEL(PrivacyLabel, CurrentPrivacy);
+
+    DEFINE_SET_LABEL(TrustLabel, SetCurrentTrust);
+    DEFINE_GET_LABEL(TrustLabel, CurrentTrust);
+
+    // Compartment clearance
+    DEFINE_SET_CLEARANCE(PrivacyClearance);
+    DEFINE_GET_LABEL(PrivacyClearance, Privacy);
+
+    DEFINE_SET_CLEARANCE(TrustClearance);
+    DEFINE_GET_LABEL(TrustClearance, Trust);
+
+#undef DEFINE_SET_CLEARANCE
+#undef DEFINE_SET_LABEL
+#undef DEFINE_GET_LABEL
+
+    inline void SetSandbox(mozilla::dom::Sandbox *box) {
+        NS_ASSERTION(box, "SetSandbox called with null sandbox!");
+        NS_ASSERTION(!isSandboxMode(), "Conflicting, sandbox-mode enabled!");
+        mSandbox = box;
+        mPrivacyLabel = mSandbox->CurrentPrivacy();
+        mTrustLabel   = mSandbox->CurrentTrust();
+        mPrivacyClearance = mSandbox->Privacy();
+        mTrustClearance   = mSandbox->Trust();
+    }
+
+    mozilla::dom::Sandbox* GetSandbox() {
+        return mSandbox;
+    }
+
+    SandboxConfig() : mPrivacyLabel(nullptr)
+                    , mTrustLabel(nullptr)
+                    , mPrivacyClearance(nullptr)
+                    , mTrustClearance(nullptr)
+                    , mSandbox(nullptr)
+    {}
+
+    ~SandboxConfig() {
+        mPrivacyLabel     = nullptr;
+        mTrustLabel       = nullptr;
+        mPrivacyClearance = nullptr;
+        mTrustClearance   = nullptr;
+        mSandbox          = nullptr;
     }
 
 private:
-    nsRefPtr<mozilla::dom::Label> privacyLabel, trustLabel;
-    nsRefPtr<mozilla::dom::Label> privacyClearance, trustClearance;
-    // associated sandbox
-    mozilla::dom::Sandbox* assocSandbox;
+    
+    // Compartment labels
+    nsRefPtr<mozilla::dom::Label> mPrivacyLabel;
+    nsRefPtr<mozilla::dom::Label> mTrustLabel;
+
+    // Compartment learance
+    nsRefPtr<mozilla::dom::Label> mPrivacyClearance;
+    nsRefPtr<mozilla::dom::Label> mTrustClearance;
+
+    // Compartment sandbox
+    mozilla::dom::Sandbox* mSandbox;
 };
 } //namespace sandbox
 
@@ -3814,7 +3849,7 @@ public:
         locationURI = aLocationURI;
     }
 
-    sandbox::CompartmentLabels labels;
+    sandbox::SandboxConfig sandboxConfig;
 
 private:
     nsCString location;
