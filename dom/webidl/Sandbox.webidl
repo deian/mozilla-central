@@ -4,6 +4,8 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
+interface Principal;
+
 callback SandboxCallback = void (any message);
 
 [Constructor,
@@ -62,6 +64,8 @@ interface Sandbox {
   // Set the underlying privacy clearance, if it subsumes the existing one
   [Throws] static boolean setTrustClearance(Label aLabel);
 
+  // Get the compartment principal
+  static DOMString getPrincipal();
   // Static ==================================================================
 
   // temporary:

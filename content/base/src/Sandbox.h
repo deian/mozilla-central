@@ -161,6 +161,8 @@ public: // Static DOM interface ==============================================
                                                    JSContext* cx);
 
 
+  static void GetPrincipal(const GlobalObject& global, nsString& retval); 
+
 public: // TODO REMOVE =======================================================
   JSObject* GetSandbox(JSContext* cx) const { return mSandboxObj; }
 

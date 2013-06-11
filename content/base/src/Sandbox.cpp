@@ -769,6 +769,23 @@ SandboxGetMessage(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
   return sandbox->SetMessageToHandle(cx, vp);
 }
 
+void
+Sandbox::GetPrincipal(const GlobalObject& global, nsString& retval)
+{
+  retval = NS_LITERAL_STRING("");
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
+
+  nsIPrincipal* prin = xpc::GetCompartmentPrincipal(compartment);
+  if (!prin) return;
+
+  char *origin = NULL;
+  if (NS_FAILED(prin->GetOrigin(&origin)))
+    return;
+  AppendASCIItoUTF16(origin, retval);
+  NS_Free(origin);
+}
+
 // Internal ==================================================================
 
 
