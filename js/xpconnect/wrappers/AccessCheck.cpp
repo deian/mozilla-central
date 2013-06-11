@@ -443,12 +443,7 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
     RootedId id(cx, idArg);
     RootedObject wrapped(cx, Wrapper::wrappedObject(wrapper));
 
-    //return true;//TODO: rm
-    if (act == Wrapper::CALL) {
-        NS_WARNING("Allowing CALL cross compartment since objects are guaranteed to be structured");
-    }
-
-    //if (act == Wrapper::GET)
+    //Allowing GET and CALL cross compartment since objects are guaranteed to be structured
     {
         //information flows from the wrapped to the wrapper; use wrapper's privilege
         bool res = xpc::sandbox::GuardRead(js::GetObjectCompartment(wrapper),

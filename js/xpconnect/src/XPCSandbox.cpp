@@ -68,6 +68,8 @@ IsCompartmentSandboxed(JSCompartment *compartment)
                                                                   \
     NS_ASSERTION(IsCompartmentSandboxed(compartment),             \
                  "Must call EnableCompartmentSandbox() first");   \
+    if (!IsCompartmentSandboxed(compartment))                     \
+      return;                                                     \
                                                                   \
     ErrorResult aRv;                                              \
     nsRefPtr<Label> label = (aLabel)->Clone(aRv);                 \
@@ -175,12 +177,16 @@ GuardRead(JSCompartment *compartment,
     ErrorResult aRv;
 
     // join privacy
-    compPrivacy->_And(/*priv,*/privacy, aRv); 
+    compPrivacy->_And(privacy, aRv); 
     NS_ASSERTION(!aRv.Failed(), "internal _And clone failed.");
+    if(aRv.Failed()) return false;
+    compPrivacy->Reduce(priv);
 
     // join trust
-    compTrust->_Or(/*priv,*/trust, aRv);
+    compTrust->_Or(trust, aRv);
     NS_ASSERTION(!aRv.Failed(), "internal _Or clone failed.");
+    if(aRv.Failed()) return false;
+    compTrust->Reduce(priv);
 
     return true;
   } 
@@ -196,6 +202,15 @@ GuardRead(JSCompartment *compartment,
 NS_EXPORT_(bool)
 GuardRead(JSCompartment *compartment, JSCompartment *source)
 {
+
+
+  //No information exchange between a non-sandboxed and sandboxed compartment
+  if (!xpc::sandbox::IsCompartmentSandboxed(source))
+    return false;
+
+  if (!xpc::sandbox::IsCompartmentSandboxed(compartment))
+    xpc::sandbox::EnableCompartmentSandbox(compartment);
+
   bool sandbox = SANDBOX_CONFIG(source).isSandbox();
   
   // When reading from sandbox, use the sandbox label, which is the

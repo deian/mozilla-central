@@ -462,15 +462,6 @@ WrapperFactory::Rewrap(JSContext *cx, HandleObject existing, HandleObject obj,
     }
     else if (!originIsChrome && !targetIsChrome && 
              (targetIsSandbox || originIsSandbox)) {
-
-        // if either compartment is not a sandbox, turn it so we use the proper label
-        if(!originIsSandbox) {
-            xpc::sandbox::EnableCompartmentSandbox(origin);
-        }
-        if(!targetIsSandbox) {
-            xpc::sandbox::EnableCompartmentSandbox(target);
-        }
-
         wrapper = &FilteringWrapper<CrossCompartmentSecurityWrapper, SandboxPolicy>::singleton;
     }
 
