@@ -77,6 +77,10 @@ public: // C++ only:
   void _Or(mozilla::dom::Role& role, ErrorResult& aRv);
   void _Or(mozilla::dom::Label& label, ErrorResult& aRv);
 
+  // Reduce label by removing any elements that he supplied privilege
+  // subsumes
+  void Reduce(nsIPrincipal* priv);
+
   // Get principal if label is singleton
   already_AddRefed<nsIPrincipal> GetPrincipalIfSingleton() const;
 

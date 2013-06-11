@@ -314,6 +314,17 @@ Label::_Or(mozilla::dom::Label& label, ErrorResult& aRv)
   }
 }
 
+void
+Label::Reduce(nsIPrincipal *priv)
+{
+  if (!priv) return;
+
+  // Remove any elements that the privilege subsumes
+  RoleSubsumeInvComparator cmp;
+  nsRefPtr<Role> privRole = new Role(priv);
+  while(mRoles.RemoveElement(privRole, cmp)) ;
+}
+
 already_AddRefed<nsIPrincipal>
 Label::GetPrincipalIfSingleton() const
 {
