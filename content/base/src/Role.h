@@ -90,11 +90,21 @@ private:
 class nsIPrincipalComparator {
 
 public:
-  bool Equals(const nsCOMPtr<nsIPrincipal> &p1,
+  int Compare(const nsCOMPtr<nsIPrincipal> &p1,
               const nsCOMPtr<nsIPrincipal> &p2) const;
 
+  bool Equals(const nsCOMPtr<nsIPrincipal> &p1,
+              const nsCOMPtr<nsIPrincipal> &p2) const
+  {
+    return Compare(p1,p2) == 0;
+  }
+
   bool LessThan(const nsCOMPtr<nsIPrincipal> &p1,
-                const nsCOMPtr<nsIPrincipal> &p2) const;
+                const nsCOMPtr<nsIPrincipal> &p2) const
+  {
+    return Compare(p1,p2) < 0;
+  }
+
 };
 
 

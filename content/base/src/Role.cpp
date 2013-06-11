@@ -265,34 +265,10 @@ Role::_Or(Role& other)
 
 // Comparator helpers
 
-bool
-nsIPrincipalComparator::Equals(const nsCOMPtr<nsIPrincipal> &p1,
-                               const nsCOMPtr<nsIPrincipal> &p2) const 
+int
+nsIPrincipalComparator::Compare(const nsCOMPtr<nsIPrincipal> &p1,
+                                const nsCOMPtr<nsIPrincipal> &p2) const
 {
-  nsresult rv;
-  nsCOMPtr<nsIURI> u1, u2;
-
-  rv = p1->GetURI(getter_AddRefs(u1));
-  NS_ASSERTION(NS_SUCCEEDED(rv), "nsIPrincipal::GetURI failed");
-  if (NS_FAILED(rv)) return false;
-
-  rv = p2->GetURI(getter_AddRefs(u2));
-  NS_ASSERTION(NS_SUCCEEDED(rv), "nsIPrincipal::GetURI failed");
-  if (NS_FAILED(rv)) return false;
-
-  bool res;
-  rv = u1->Equals(u2, &res);
-  NS_ASSERTION(NS_SUCCEEDED(rv), "nsIURI::Equals failed");
-  if (NS_FAILED(rv)) return false;
-
-  return res;
-}
-
-bool
-nsIPrincipalComparator::LessThan(const nsCOMPtr<nsIPrincipal> &p1,
-                                 const nsCOMPtr<nsIPrincipal> &p2) const 
-{
-
   bool res;
   char *origin1, *origin2;
   nsresult rv;
@@ -305,7 +281,7 @@ nsIPrincipalComparator::LessThan(const nsCOMPtr<nsIPrincipal> &p1,
   NS_ASSERTION(NS_SUCCEEDED(rv), "nsIPrincipal::GetOrigin failed");
   if (NS_FAILED(rv)) return false;
 
-  res = strcmp(origin1, origin2) < 0;
+  res = strcmp(origin1, origin2);
 
   nsMemory::Free(origin1);
   nsMemory::Free(origin2);
