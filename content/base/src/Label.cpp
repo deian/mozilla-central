@@ -328,16 +328,21 @@ Label::Reduce(nsIPrincipal *priv)
 already_AddRefed<nsIPrincipal>
 Label::GetPrincipalIfSingleton() const
 {
-  if (mRoles.Length() != 1)
-    return nullptr;
+  PrincipalArray* ps = GetPrincipalsIfSingleton();
 
-  PrincipalArray* ps = mRoles.ElementAt(0)->GetDirectPrincipals();
-
-  if (ps->Length() != 1)
+  if (!ps || ps->Length() != 1)
     return nullptr;
 
   nsCOMPtr<nsIPrincipal> p = ps->ElementAt(0);
   return p.forget();
+}
+
+PrincipalArray*
+Label::GetPrincipalsIfSingleton() const
+{
+  if (mRoles.Length() != 1)
+    return nullptr;
+  return mRoles.ElementAt(0)->GetDirectPrincipals();
 }
 
 //

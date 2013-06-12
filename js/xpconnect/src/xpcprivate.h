@@ -3685,6 +3685,20 @@ namespace sandbox {
 class SandboxConfig
 {
 public:
+    SandboxConfig() : mPrivacyLabel(nullptr)
+                    , mTrustLabel(nullptr)
+                    , mPrivacyClearance(nullptr)
+                    , mTrustClearance(nullptr)
+                    , mSandbox(nullptr)
+    {}
+
+    ~SandboxConfig() {
+        mPrivacyLabel     = nullptr;
+        mTrustLabel       = nullptr;
+        mPrivacyClearance = nullptr;
+        mTrustClearance   = nullptr;
+        mSandbox          = nullptr;
+    }
 
     // Is the compartment a sandbox or did we enable sandbox-mode by setting
     // the compartment labels.
@@ -3699,7 +3713,7 @@ public:
 
     // Is the compartment in sandbox mode
     inline bool isSandboxMode() {
-        return  !!mPrivacyLabel && !!mTrustLabel;
+        return  mPrivacyLabel && mTrustLabel;
     }
 
     // Is the compartment in sandbox mode
@@ -3755,30 +3769,12 @@ public:
         NS_ASSERTION(box, "SetSandbox called with null sandbox!");
         NS_ASSERTION(!isSandboxMode(), "Conflicting, sandbox-mode enabled!");
         mSandbox = box;
-        mPrivacyLabel = mSandbox->CurrentPrivacy();
-        mTrustLabel   = mSandbox->CurrentTrust();
-        mPrivacyClearance = mSandbox->Privacy();
-        mTrustClearance   = mSandbox->Trust();
     }
 
     mozilla::dom::Sandbox* GetSandbox() {
         return mSandbox;
     }
 
-    SandboxConfig() : mPrivacyLabel(nullptr)
-                    , mTrustLabel(nullptr)
-                    , mPrivacyClearance(nullptr)
-                    , mTrustClearance(nullptr)
-                    , mSandbox(nullptr)
-    {}
-
-    ~SandboxConfig() {
-        mPrivacyLabel     = nullptr;
-        mTrustLabel       = nullptr;
-        mPrivacyClearance = nullptr;
-        mTrustClearance   = nullptr;
-        mSandbox          = nullptr;
-    }
 
 private:
     

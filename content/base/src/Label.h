@@ -83,6 +83,7 @@ public: // C++ only:
 
   // Get principal if label is singleton
   already_AddRefed<nsIPrincipal> GetPrincipalIfSingleton() const;
+  PrincipalArray* GetPrincipalsIfSingleton() const;
 
 private:
 

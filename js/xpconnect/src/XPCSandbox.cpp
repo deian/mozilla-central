@@ -11,6 +11,7 @@
 #include  "mozilla/dom/Sandbox.h"
 #include  "mozilla/dom/Label.h"
 #include  "mozilla/dom/Role.h"
+#include "nsIContentSecurityPolicy.h"
 
 using namespace xpc;
 using namespace JS;
@@ -19,6 +20,12 @@ using namespace mozilla::dom;
 
 namespace xpc {
 namespace sandbox {
+
+static void
+SetCompartmentPrincipal(JSCompartment *compartment, nsIPrincipal *principal)
+{
+  //TODO: JS_SetCompartmentPrincipals(compartment, nsJSPrincipals::get(principal));
+}
 
 
 #define SANDBOX_CONFIG(compartment) \
@@ -57,6 +64,133 @@ IsCompartmentSandboxed(JSCompartment *compartment)
   MOZ_ASSERT(compartment);
   return SANDBOX_CONFIG(compartment).Enabled();
 }
+
+NS_EXPORT_(bool)
+IsCompartmentSandbox(JSCompartment *compartment)
+{
+  MOZ_ASSERT(compartment);
+  return SANDBOX_CONFIG(compartment).isSandbox();
+}
+
+NS_EXPORT_(bool)
+IsCompartmentSandboxMode(JSCompartment *compartment)
+{
+  MOZ_ASSERT(compartment);
+  return SANDBOX_CONFIG(compartment).isSandboxMode();
+}
+
+// This function adjusts the "security permieter".
+// Specifically, it adjusts:
+// 1. The CSP policy to restrict with whom the current compartment may
+// network-communicate with.
+// 2. The compartment principal to restrict writing to storage
+// cnannels.
+//
+static void
+AdjustSecurityPerimeter(JSCompartment *compartment)
+{
+  nsresult rv;
+
+  nsRefPtr<Label> privacy =
+    SANDBOX_CONFIG(compartment).GetPrivacyLabel();
+
+  // Case 1: Empty/public label, don't loosen/impose new restrictions
+  if (privacy->IsEmpty())
+    return;
+
+  nsIPrincipal *compPrincipal = GetCompartmentPrincipal(compartment);
+  MOZ_ASSERT(compPrincipal);
+
+  PrincipalArray* labelPrincipals =
+    privacy->GetPrincipalsIfSingleton();
+
+  bool disableStorage = false;
+
+  // If CSP policy exists, get it
+  nsCOMPtr<nsIContentSecurityPolicy> csp;
+  rv = compPrincipal->GetCsp(getter_AddRefs(csp));
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
+  // Get self uri
+  nsString policy;
+  nsCOMPtr<nsIURI> uri;
+  rv = compPrincipal->GetURI(getter_AddRefs(uri));
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+  // Create a new CSP object
+  if(!csp) {
+    csp = do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
+    MOZ_ASSERT(NS_SUCCEEDED(rv) && csp);
+    rv = compPrincipal->SetCsp(csp);
+    //FIXME: nullprincipals: MOZ_ASSERT(NS_SUCCEEDED(rv));
+  }
+
+  if (labelPrincipals && labelPrincipals->Length() > 0) {
+
+    // Same as as Case 1, should not really occur since we always reduce
+    // sandbox-mode compartment labels
+    if (MOZ_UNLIKELY(labelPrincipals->Length() == 1  &&
+        labelPrincipals->ElementAt(0)->Equals(compPrincipal)))
+      return;
+
+    // Case 2: label has the form Role([a.com , b.com , ... ])
+    // Allow network access to all the origins in the list, but
+    // disable storage access since we can't communicate with content
+    // origin.
+    disableStorage = true;
+
+    nsString origins;
+    for (unsigned i = 0; i < labelPrincipals->Length(); ++i) {
+      char *origin = NULL;
+      rv = labelPrincipals->ElementAt(i)->GetOrigin(&origin);
+      MOZ_ASSERT(NS_SUCCEEDED(rv));
+      AppendASCIItoUTF16(origin, origins);
+      NS_Free(origin);
+      origins.Append(NS_LITERAL_STRING(" "));
+    }
+
+    policy = NS_LITERAL_STRING("default-src ")  + origins
+           + NS_LITERAL_STRING(";script-src ")  + origins
+           + NS_LITERAL_STRING(";object-src ")  + origins
+           + NS_LITERAL_STRING(";style-src ")   + origins
+           + NS_LITERAL_STRING(";img-src ")     + origins
+           + NS_LITERAL_STRING(";media-src ")   + origins
+           + NS_LITERAL_STRING(";frame-src ")   + origins
+           + NS_LITERAL_STRING(";font-src ")    + origins
+           + NS_LITERAL_STRING(";connect-src ") + origins
+           + NS_LITERAL_STRING(";");
+
+    rv = labelPrincipals->ElementAt(0)->GetURI(getter_AddRefs(uri));
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+  } else {
+    // Case 3: not the empty label or singleton disjunctive role
+    // Disable all network and storage access
+    disableStorage = true;
+
+    // Policy to disable all communication
+    policy = NS_LITERAL_STRING("default-src 'none';\
+                                script-src  'none';\
+                                object-src  'none';\
+                                style-src   'none';\
+                                img-src     'none';\
+                                media-src   'none';\
+                                frame-src   'none';\
+                                font-src    'none';\
+                                connect-src 'none';");
+  }
+
+  // Refine policy
+  csp->RefinePolicy(policy, uri, true);
+
+
+  if (disableStorage) {
+    nsCOMPtr<nsIPrincipal> nullPrincipal =
+      do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
+    MOZ_ASSERT (NS_SUCCEEDED(rv));
+    SetCompartmentPrincipal(compartment, nullPrincipal);
+  }
+}
+
 
 #define DEFINE_SET_LABEL(name)                                    \
   NS_EXPORT_(void)                                                \
@@ -136,7 +270,7 @@ NS_EXPORT_(bool)
 GuardRead(JSCompartment *compartment,
           mozilla::dom::Label &privacy, mozilla::dom::Label &trust)
 {
-  nsIPrincipal *priv;
+  nsIPrincipal *priv = nullptr;
   bool sandboxMode = SANDBOX_CONFIG(compartment).isSandboxMode();
 
   // If the compartment is not a sandbox (it's content) and so we
@@ -187,6 +321,8 @@ GuardRead(JSCompartment *compartment,
     NS_ASSERTION(!aRv.Failed(), "internal _Or clone failed.");
     if(aRv.Failed()) return false;
     compTrust->Reduce(priv);
+
+    AdjustSecurityPerimeter(compartment);
 
     return true;
   } 

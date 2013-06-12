@@ -134,6 +134,8 @@ public: // Static DOM interface ==============================================
 
   static void EnableSandbox(const GlobalObject& global);
   static bool IsSandboxed(const GlobalObject& global);
+  static bool IsSandbox(const GlobalObject& global);
+  static bool IsSandboxMode(const GlobalObject& global);
 
   // label
 
@@ -169,7 +171,7 @@ public: // TODO REMOVE =======================================================
 public: // Internal ==========================================================
 
   // Raise sandbox and compartment labels
-  void RaiseLabel(JSCompartment *compartment);
+  void RaiseLabel();
 
   // Call onmessage handler registered _on_ the sandbox
   JSBool DispatchResult(JSContext* cx);

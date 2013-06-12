@@ -39,6 +39,8 @@ interface Sandbox {
   static void enableSandbox();
   // Check if current compartment is sandboxed
   static boolean isSandboxed();
+  static boolean isSandbox();
+  static boolean isSandboxMode();
 
   // label
 

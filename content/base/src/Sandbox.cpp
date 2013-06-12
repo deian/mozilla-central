@@ -472,6 +472,22 @@ Sandbox::IsSandboxed(const GlobalObject& global)
   return xpc::sandbox::IsCompartmentSandboxed(compartment);
 }
 
+bool 
+Sandbox::IsSandbox(const GlobalObject& global)
+{
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
+  return xpc::sandbox::IsCompartmentSandbox(compartment);
+}
+
+bool 
+Sandbox::IsSandboxMode(const GlobalObject& global)
+{
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
+  return xpc::sandbox::IsCompartmentSandboxMode(compartment);
+}
+
 // label
 
 bool
@@ -707,7 +723,7 @@ SandboxOnmessage(JSContext *cx, unsigned argc, jsval *vp)
   MOZ_ASSERT(sandbox); // must be in sandboxed compartment
 
   // Raise label of sandbox
-  sandbox->RaiseLabel(compartment);
+  sandbox->RaiseLabel();
 
   // check that the number of arguments is 1
   JS::CallArgs args = CallArgsFromVp(argc, vp);
@@ -763,7 +779,7 @@ SandboxGetMessage(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
   MOZ_ASSERT(sandbox); // must be in sandboxed compartment
 
   // Raise label of sandbox
-  sandbox->RaiseLabel(compartment);
+  sandbox->RaiseLabel();
 
   // Wrap and set the result
   return sandbox->SetMessageToHandle(cx, vp);
@@ -792,10 +808,10 @@ Sandbox::GetPrincipal(const GlobalObject& global, nsString& retval)
 // Set the compartment and current sandbox labels to the sandbox
 // label (set at construction time).
 void
-Sandbox::RaiseLabel(JSCompartment *compartment)
+Sandbox::RaiseLabel()
 {
-  xpc::sandbox::SetCompartmentPrivacyLabel(compartment, mPrivacy);
-  xpc::sandbox::SetCompartmentTrustLabel(compartment, mTrust);
+  mCurrentPrivacy = mPrivacy;
+  mCurrentTrust = mTrust;
 }
 
 // This function tries to dispatch an event. It fails silently if it
@@ -861,36 +877,46 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
   nsCOMPtr<nsIPrincipal> principal = mPrivacy->GetPrincipalIfSingleton();
 
   if (principal) {
-    // "clone" the principal
-    nsCOMPtr<nsIURI> uri;
-    rv = principal->GetURI(getter_AddRefs(uri));
+    bool isNull;
+    rv = principal->GetIsNullPrincipal(&isNull);
     if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
 
-    nsCOMPtr<nsIScriptSecurityManager> secMan =
-      nsContentUtils::GetSecurityManager();
-    if(!secMan) { aRv.Throw(NS_ERROR_FAILURE); return; }
-    rv = secMan->GetNoAppCodebasePrincipal(uri, getter_AddRefs(mPrincipal));
-
-    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-
-    nsCOMPtr<nsIContentSecurityPolicy> csp =
-      do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
-
-    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-
-    if (csp) {
-      nsString policy = NS_LITERAL_STRING("default-src 'none'; \
-                                           connect-src 'self';");
-      csp->RefinePolicy(policy, uri, true);
-      rv = mPrincipal->SetCsp(csp);
+    if (isNull) {
+      //TODO: once null principals can have csp we need to change this
+      //to export XHR constructor
+      mPrincipal = principal;
+    } else {
+      // "clone" the principal
+      nsCOMPtr<nsIURI> uri;
+      rv = principal->GetURI(getter_AddRefs(uri));
       if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-      options.wantXHRConstructor = true;
+
+      nsCOMPtr<nsIScriptSecurityManager> secMan =
+        nsContentUtils::GetSecurityManager();
+      if(!secMan) { aRv.Throw(NS_ERROR_FAILURE); return; }
+      rv = secMan->GetNoAppCodebasePrincipal(uri, getter_AddRefs(mPrincipal));
+
+      if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+
+      nsCOMPtr<nsIContentSecurityPolicy> csp =
+        do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
+
+      if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+
+      if (csp) {
+        nsString policy = NS_LITERAL_STRING("default-src 'none'; \
+                                             connect-src 'self';");
+        csp->RefinePolicy(policy, uri, true);
+        rv = mPrincipal->SetCsp(csp);
+        if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+        options.wantXHRConstructor = true;
+      }
     }
-  }
-  else {
+  } else {
+    //TODO: once null principals can have csp we need to change this
+    //to export XHR constructor
     mPrincipal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
     if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-    options.wantXHRConstructor = false;
   }
 
 
@@ -988,7 +1014,7 @@ Sandbox::EvalInSandbox(JSContext *cx, const nsAString& source, ErrorResult &aRv)
                           v.address());
 
         // Raise the label of the sandbox compartment to the sandbox label
-        RaiseLabel(compartment);
+        RaiseLabel();
 
         // If the sandbox threw an exception, grab it off the context.
         if (JS_GetPendingException(sandcx, v.address())) {

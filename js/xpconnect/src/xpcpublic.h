@@ -464,6 +464,12 @@ EnableCompartmentSandbox(JSCompartment *compartment,
 NS_EXPORT_(bool)
 IsCompartmentSandboxed(JSCompartment *compartment);
 
+NS_EXPORT_(bool)
+IsCompartmentSandbox(JSCompartment *compartment);
+
+NS_EXPORT_(bool)
+IsCompartmentSandboxMode(JSCompartment *compartment);
+
 
 #define DECLARE_SET_LABEL(name)                       \
     NS_EXPORT_(void)                                  \
