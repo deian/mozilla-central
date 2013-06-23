@@ -78,9 +78,9 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(Sandbox,
                                                nsDOMEventTargetHelper)
   NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER
-  //NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mSandboxObj)
-  //NS_IMPL_CYCLE_COLLECTION_TRACE_JSVAL_MEMBER_CALLBACK(mResult)
-  //NS_IMPL_CYCLE_COLLECTION_TRACE_JSVAL_MEMBER_CALLBACK(mMessage)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JS_MEMBER_CALLBACK(mSandboxObj)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JSVAL_MEMBER_CALLBACK(mResult)
+  NS_IMPL_CYCLE_COLLECTION_TRACE_JSVAL_MEMBER_CALLBACK(mMessage)
 NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(Sandbox)
@@ -397,10 +397,9 @@ Sandbox::SetCurrentTrust(mozilla::dom::Label* aLabel)
 
 
 JS::Value
-Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) const {
+Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
   // Wrap the result
-  // TODO: casting may be dangerous w.r.t JIT?
-  if (!JS_WrapValue(cx, const_cast<JS::Value* >(&mResult))) {
+  if (!JS_WrapValue(cx, mResult.unsafeGet())) {
     JSErrorResult(cx, aRv, "Failed to wrap message.");
     return JSVAL_VOID;
   }
@@ -444,7 +443,7 @@ bool
 Sandbox::SetMessageToHandle(JSContext *cx, JS::MutableHandleValue vp)
 {
   // Wrap the message
-  if (!JS_WrapValue(cx, &mMessage)) {
+  if (!JS_WrapValue(cx, mMessage.unsafeGet())) {
     ClearMessage();
     JS_ReportError(cx, "Failed to wrap message.");
     return false;
@@ -828,7 +827,7 @@ Sandbox::DispatchResult(JSContext* cx)
     return true;
 
   // Wrap the result
-  if (!JS_WrapValue(cx, &mResult)) {
+  if (!JS_WrapValue(cx, mResult.unsafeGet())) {
     ClearResult();
     return false;
   }
@@ -933,7 +932,8 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
     return;
   }
 
-  if (!JS_ValueToObject(cx, sandboxVal, &mSandboxObj) || !mSandboxObj) {
+  if (!JS_ValueToObject(cx, sandboxVal, mSandboxObj.unsafeGet()) ||
+      !mSandboxObj) {
     aRv.Throw(NS_ERROR_FAILURE);
     return;
   }

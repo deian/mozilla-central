@@ -116,7 +116,10 @@ public: // DOM interface =====================================================
 
 
   // result from sandbox related
-  JS::Value GetResult(JSContext* cx, ErrorResult& aRv) const;
+  JS::Value GetResult(JSContext* cx, ErrorResult& aRv) const {
+    return reinterpret_cast<const Sandbox*>(this)->GetResult(cx,aRv);
+  }
+  JS::Value GetResult(JSContext* cx, ErrorResult& aRv);
 
 public: 
   // C++ only
@@ -211,16 +214,16 @@ private:
   nsCOMPtr<nsIPrincipal> mPrincipal;
 
   // Underlying sandbox object
-  JSObject* mSandboxObj;
+  JS::Heap<JSObject*> mSandboxObj;
 
   // Sandbox computation result
-  JS::Value mResult;
+  JS::Heap<JS::Value> mResult;
   ResultType mResultType;
 
   // Sandbox event target
   nsRefPtr<SandboxEventTarget> mEventTarget;
   // Message to sandbox
-  JS::Value mMessage;
+  JS::Heap<JS::Value> mMessage;
   bool mMessageIsSet;
 };
 
