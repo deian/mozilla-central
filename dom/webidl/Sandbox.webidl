@@ -32,6 +32,8 @@ interface Sandbox {
   // Send message to sandbox
   [Throws] void postMessage(any message);
 
+  [GetterThrows] readonly attribute any result;
+
   // Static ==================================================================
   //TODO: move into partial interface
 
@@ -70,13 +72,10 @@ interface Sandbox {
   static DOMString getPrincipal();
   // Static ==================================================================
 
-  // temporary:
+  // temporary*********************************************************
   readonly attribute object getSandbox;
 
-  // temporary:
-  [GetterThrows]
-  readonly attribute any result;
-  
+
 };
 
 [NoInterfaceObject]

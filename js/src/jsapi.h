@@ -1731,6 +1731,9 @@ CurrentGlobalOrNull(JSContext *cx);
 
 }
 
+extern JS_PUBLIC_API(JSObject *)
+JS_GetGlobalForCompartmentOrNull(JSCompartment *c);
+
 /*
  * This method returns the global corresponding to the most recent scripted
  * frame, which may not match the cx's current compartment. This is extremely

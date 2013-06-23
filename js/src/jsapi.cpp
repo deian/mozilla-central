@@ -1689,6 +1689,12 @@ JS::CurrentGlobalOrNull(JSContext *cx)
     return cx->global();
 }
 
+JS_PUBLIC_API(JSObject *)
+JS_GetGlobalForCompartmentOrNull(JSCompartment *c)
+{
+    return c->maybeGlobal();
+}
+
 JS_PUBLIC_API(jsval)
 JS_ComputeThis(JSContext *cx, jsval *vp)
 {

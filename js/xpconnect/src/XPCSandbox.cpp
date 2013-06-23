@@ -8,10 +8,11 @@
 #include "xpcprivate.h"
 #include "xpcpublic.h"
 #include "jsfriendapi.h"
-#include  "mozilla/dom/Sandbox.h"
-#include  "mozilla/dom/Label.h"
-#include  "mozilla/dom/Role.h"
+#include "mozilla/dom/Sandbox.h"
+#include "mozilla/dom/Label.h"
+#include "mozilla/dom/Role.h"
 #include "nsIContentSecurityPolicy.h"
+#include "nsDocument.h"
 
 using namespace xpc;
 using namespace JS;
@@ -24,7 +25,7 @@ namespace sandbox {
 static void
 SetCompartmentPrincipal(JSCompartment *compartment, nsIPrincipal *principal)
 {
-  //TODO: JS_SetCompartmentPrincipals(compartment, nsJSPrincipals::get(principal));
+  JS_SetCompartmentPrincipals(compartment, nsJSPrincipals::get(principal));
 }
 
 
@@ -98,7 +99,7 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
   if (privacy->IsEmpty())
     return;
 
-  nsIPrincipal *compPrincipal = GetCompartmentPrincipal(compartment);
+  nsCOMPtr<nsIPrincipal> compPrincipal = GetCompartmentPrincipal(compartment);
   MOZ_ASSERT(compPrincipal);
 
   PrincipalArray* labelPrincipals =
@@ -121,7 +122,7 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
     csp = do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
     MOZ_ASSERT(NS_SUCCEEDED(rv) && csp);
     rv = compPrincipal->SetCsp(csp);
-    //FIXME: nullprincipals: MOZ_ASSERT(NS_SUCCEEDED(rv));
+    MOZ_ASSERT(NS_SUCCEEDED(rv)); // depends on bug 886164
   }
 
   if (labelPrincipals && labelPrincipals->Length() > 0) {
@@ -184,11 +185,57 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
 
 
   if (disableStorage) {
-    nsCOMPtr<nsIPrincipal> nullPrincipal =
-      do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
+    compPrincipal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
     MOZ_ASSERT (NS_SUCCEEDED(rv));
-    SetCompartmentPrincipal(compartment, nullPrincipal);
+
+    SetCompartmentPrincipal(compartment, compPrincipal);
+
+//#if 0
+    nsCOMPtr<nsIURI> baseURI;
+    nsresult rv = compPrincipal->GetURI(getter_AddRefs(baseURI));
+    MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+    // set the compartment location
+    EnsureCompartmentPrivate(compartment)->SetLocationURI(baseURI);
+
+
+    if (SANDBOX_CONFIG(compartment).isSandboxMode()) {
+      
+      // Get the compartment global
+      nsCOMPtr<nsIGlobalObject> global =
+        GetNativeForGlobal(JS_GetGlobalForCompartmentOrNull(compartment));
+
+      // Get the underlying window
+      nsCOMPtr<nsIDOMWindow> win(do_QueryInterface(global));
+      MOZ_ASSERT(win);
+
+      // Get the window document
+      nsCOMPtr<nsIDOMDocument> domDoc;
+      win->GetDocument(getter_AddRefs(domDoc));
+      MOZ_ASSERT(domDoc);
+
+      nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+      MOZ_ASSERT(doc);
+
+      // Set the document principal
+      doc->SetPrincipal(compPrincipal);
+
+      // Change the document base uri to the nullprincipal uri
+      doc->SetBaseURI(baseURI);
+
+      // Set iframe sandbox flags most restrcting flags:
+      uint32_t flags = 
+        nsContentUtils::ParseSandboxAttributeToFlags(NS_LITERAL_STRING(""));
+
+      doc->SetSandboxFlags(flags);
+
+    }
+//#endif
   }
+
+  // Set CSP
+  rv = compPrincipal->SetCsp(csp);
+  MOZ_ASSERT(NS_SUCCEEDED(rv)); // depends on bug 886164
 }
 
 
