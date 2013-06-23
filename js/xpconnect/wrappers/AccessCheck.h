@@ -112,7 +112,7 @@ struct ComponentsObjectPolicy : public Policy {
 
 struct SandboxPolicy : public Policy {
     static bool check(JSContext *cx, JSObject *wrapper, jsid id, js::Wrapper::Action act);
-    static bool deny(js::Wrapper::Action act, JSHandleId id) {
+    static bool deny(js::Wrapper::Action act, JS::HandleId id) {
         return false;
     }
     static bool allowNativeCall(JSContext *cx, JS::IsAcceptableThis test, JS::NativeImpl impl)
