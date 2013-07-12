@@ -96,6 +96,7 @@ webidl_files = \
   FileRequest.webidl \
   FocusEvent.webidl \
   FormData.webidl \
+  FreshPrincipal.webidl \
   Function.webidl \
   GainNode.webidl \
   Geolocation.webidl \

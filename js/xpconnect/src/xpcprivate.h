@@ -3689,6 +3689,7 @@ public:
                     , mTrustLabel(nullptr)
                     , mPrivacyClearance(nullptr)
                     , mTrustClearance(nullptr)
+                    , mPrivileges(nullptr)
                     , mSandbox(nullptr)
     {}
 
@@ -3697,6 +3698,7 @@ public:
         mTrustLabel       = nullptr;
         mPrivacyClearance = nullptr;
         mTrustClearance   = nullptr;
+        mPrivileges       = nullptr;
         mSandbox          = nullptr;
     }
 
@@ -3735,9 +3737,7 @@ public:
     inline already_AddRefed<mozilla::dom::Label> Get##name() {  \
         nsRefPtr<mozilla::dom::Label> l = isSandbox() ?         \
           mSandbox->sboxGetter() : (m##name);                   \
-        if (!l)                                                 \
-            return nullptr;                                     \
-        return l.forget();                                      \
+        return !l ? nullptr: l.forget();                        \
     }
 
 #define DEFINE_SET_CLEARANCE(name)                                     \
@@ -3761,9 +3761,24 @@ public:
     DEFINE_SET_CLEARANCE(TrustClearance);
     DEFINE_GET_LABEL(TrustClearance, Trust);
 
+
 #undef DEFINE_SET_CLEARANCE
 #undef DEFINE_SET_LABEL
 #undef DEFINE_GET_LABEL
+
+    // Compartment privileges
+
+    inline void SetPrivileges(mozilla::dom::Label *aLabel) {
+        NS_ASSERTION(aLabel, "SetPrivileges called with null label!");
+        mPrivileges = aLabel;
+    }
+
+    inline already_AddRefed<mozilla::dom::Label> GetPrivileges() {
+        nsRefPtr<mozilla::dom::Label> l = mPrivileges;
+        return !l ? nullptr: l.forget();
+    }
+
+    // Sandbox related
 
     inline void SetSandbox(mozilla::dom::Sandbox *box) {
         NS_ASSERTION(box, "SetSandbox called with null sandbox!");
@@ -3785,6 +3800,9 @@ private:
     // Compartment learance
     nsRefPtr<mozilla::dom::Label> mPrivacyClearance;
     nsRefPtr<mozilla::dom::Label> mTrustClearance;
+
+    // Compartment privileges
+    nsRefPtr<mozilla::dom::Label> mPrivileges;
 
     // Compartment sandbox
     mozilla::dom::Sandbox* mSandbox;

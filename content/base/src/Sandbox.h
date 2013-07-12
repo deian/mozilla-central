@@ -9,6 +9,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/Label.h"
+#include "mozilla/dom/FreshPrincipal.h"
 #include "mozilla/dom/SandboxBinding.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
@@ -165,7 +166,14 @@ public: // Static DOM interface ==============================================
   static already_AddRefed<Label> GetTrustClearance(const GlobalObject& global,
                                                    JSContext* cx);
 
+  // Ownership
+  static already_AddRefed<Label> GetPrivileges(const GlobalObject& global);
 
+  // Take ownership of principal
+  static void Own(const GlobalObject& global,
+                  mozilla::dom::FreshPrincipal& principal);
+
+  // Get underlying pricipal
   static void GetPrincipal(const GlobalObject& global, nsString& retval); 
 
 public: // TODO REMOVE =======================================================

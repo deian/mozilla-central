@@ -18,6 +18,9 @@
 namespace mozilla {
 namespace dom {
 
+#define SANDBOX_CONFIG(compartment) \
+  xpc::EnsureCompartmentPrivate((compartment))->sandboxConfig
+
 // Helper for getting JSObject* from GlobalObject (without casting .Get())
 static JSObject* getGlobalJSObject(const GlobalObject& global);
 //Helper for setting the ErrorResult to a string
@@ -224,7 +227,9 @@ Sandbox::Schedule(JSContext* cx, const nsAString& src, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
   JSCompartment *compartment = js::GetContextCompartment(cx);
-  nsIPrincipal* priv = xpc::GetCompartmentPrincipal(compartment);
+  nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
+
+  MOZ_ASSERT(privs);
 
   nsRefPtr<Label> callerP =
     xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
@@ -232,8 +237,13 @@ Sandbox::Schedule(JSContext* cx, const nsAString& src, ErrorResult& aRv)
     xpc::sandbox::GetCompartmentTrustLabel(compartment);
 
   if (MOZ_UNLIKELY(!xpc::sandbox::IsCompartmentSandboxed(compartment))) {
-    //should not be here
+    //If we somehow ended up with a Sandbox object but are not in a 
+    //compartment that is not a sandbox/sandbox-mode
+
+    // enable sandbox-mode
     xpc::sandbox::EnableCompartmentSandbox(compartment);
+
+    //set the initial label of the sandbox to this compartments labels
     callerP = xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
     callerT = xpc::sandbox::GetCompartmentTrustLabel(compartment);
     if (!callerP || !callerT) {
@@ -242,16 +252,33 @@ Sandbox::Schedule(JSContext* cx, const nsAString& src, ErrorResult& aRv)
     }
   }
 
+  // if this is the first time we're scheduling code in the sandbox,
+  // start with an initial label set to the current compartment's
+  // labels (though we must check that these labels flow to the labels
+  // of the sandbox)
   if (!mCurrentPrivacy && !mCurrentTrust) {
-    mCurrentPrivacy = callerP;
-    mCurrentTrust = callerT;
+    mCurrentPrivacy = callerP->Clone(aRv);
+    if (aRv.Failed()) {
+      JSErrorResult(cx, aRv, "Cannot set initial privacy label");
+      return;
+    }
+    mCurrentTrust = callerT->Clone(aRv);
+    if (aRv.Failed()) {
+      JSErrorResult(cx, aRv, "Cannot set initial trust label");
+      return;
+    }
   }
 
-  if (!mCurrentPrivacy->Subsumes(priv, *callerP) ||
-      !callerT->Subsumes(priv, *mCurrentTrust)) {
+  // current compartment label must flow to label of sandbox
+  if (!mPrivacy->Subsumes(*privs, *callerP) ||
+      !callerT->Subsumes(*privs, *mTrust)) {
     JSErrorResult(cx, aRv, "Cannot execute code in a less sensitive sandbox");
     return;
   }
+
+  // It is required that EvalInSandbox not raise the current labels
+  // above the sandbox labels; otherwise we must perform an additional
+  // check as the first step in the sandbox
 
   EvalInSandbox(cx, src,aRv);
 }
@@ -272,10 +299,12 @@ Sandbox::Ondone(JSContext* cx, EventHandlerNonNull* successHandler,
 
   JSCompartment *compartment = js::GetContextCompartment(cx);
 
+
   if (MOZ_UNLIKELY(!xpc::sandbox::IsCompartmentSandboxed(compartment)))
     xpc::sandbox::EnableCompartmentSandbox(compartment);
 
-  if (!xpc::sandbox::GuardRead(compartment,*mPrivacy,*mTrust)) {
+  // raises current label
+  if (!xpc::sandbox::GuardRead(compartment, *mPrivacy,*mTrust)) {
     JSErrorResult(cx, aRv, "Cannot read from sandbox.");
     return;
   }
@@ -502,7 +531,7 @@ Sandbox::SetPrivacyLabel(const GlobalObject& global, JSContext* cx,
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
 
-  nsIPrincipal* priv = xpc::GetCompartmentPrincipal(compartment);
+  nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
   nsRefPtr<Label> currentLabel = GetPrivacyLabel(global, cx);
   if (!currentLabel) {
@@ -510,7 +539,7 @@ Sandbox::SetPrivacyLabel(const GlobalObject& global, JSContext* cx,
     return false;
   }
 
-  if (!aLabel.Subsumes(priv, *currentLabel))
+  if (!aLabel.Subsumes(*privs, *currentLabel))
     return false;
 
   nsRefPtr<Label> currentClearance = GetPrivacyClearance(global, cx);
@@ -551,7 +580,7 @@ Sandbox::SetTrustLabel(const GlobalObject& global, JSContext* cx,
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
 
-  nsIPrincipal* priv = xpc::GetCompartmentPrincipal(compartment);
+  nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
   nsRefPtr<Label> currentLabel = GetTrustLabel(global, cx);
   if (!currentLabel) {
@@ -559,7 +588,7 @@ Sandbox::SetTrustLabel(const GlobalObject& global, JSContext* cx,
     return false;
   }
 
-  if (!currentLabel->Subsumes(priv, aLabel))
+  if (!currentLabel->Subsumes(*privs, aLabel))
     return false;
 
   nsRefPtr<Label> currentClearance = GetTrustClearance(global, cx);
@@ -592,10 +621,10 @@ Sandbox::SetPrivacyClearance(const GlobalObject& global, JSContext* cx,
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
 
-  nsIPrincipal* priv = xpc::GetCompartmentPrincipal(compartment);
+  nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
   nsRefPtr<Label> currentClearance = GetPrivacyClearance(global, cx);
-  if (currentClearance && !currentClearance->Subsumes(priv, aLabel))
+  if (currentClearance && !currentClearance->Subsumes(*privs, aLabel))
     return false;
 
   nsRefPtr<Label> currentLabel = GetPrivacyLabel(global, cx);
@@ -630,10 +659,10 @@ Sandbox::SetTrustClearance(const GlobalObject& global, JSContext* cx,
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
 
-  nsIPrincipal* priv = xpc::GetCompartmentPrincipal(compartment);
+  nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
   nsRefPtr<Label> currentClearance = GetTrustClearance(global, cx);
-  if (currentClearance && !aLabel.Subsumes(priv, *currentClearance))
+  if (currentClearance && !aLabel.Subsumes(*privs, *currentClearance))
     return false;
 
   nsRefPtr<Label> currentLabel = GetTrustLabel(global, cx);
@@ -657,6 +686,26 @@ Sandbox::GetTrustClearance(const GlobalObject& global, JSContext* cx)
 }
 
 #undef GET_LABEL
+
+// Get underlying freh principal privileges, which means all but the
+// underlying compartment privileges
+already_AddRefed<Label>
+Sandbox::GetPrivileges(const GlobalObject& global)
+{
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
+
+  nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
+
+  ErrorResult aRv;
+  privs = privs->Clone(aRv);
+
+  if (aRv.Failed())
+    privs = new Label(); // empty privileges
+
+  return privs.forget();
+}
+
 
 // Static ====================================================================
 
@@ -799,6 +848,23 @@ Sandbox::GetPrincipal(const GlobalObject& global, nsString& retval)
     return;
   AppendASCIItoUTF16(origin, retval);
   NS_Free(origin);
+}
+
+void
+Sandbox::Own(const GlobalObject& global,
+             mozilla::dom::FreshPrincipal& principal)
+{
+  EnableSandbox(global);
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
+
+  MOZ_ASSERT(compartment);
+
+
+  nsCOMPtr<nsIPrincipal> p = principal.Principal();
+  nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
+  mozilla::ErrorResult  aRv;
+  privs->_And(p, aRv);
 }
 
 // Internal ==================================================================
@@ -1047,10 +1113,8 @@ getGlobalJSObject(const GlobalObject& global)
   return nsGlob->GetGlobalJSObject();
 }
 
-//Helper for setting the ErrorResult to a string
-//
-//NOTE: this function should only be called after
-//MightThrowJSException() is called
+// Helper for setting the ErrorResult to a string.  This function
+// should only be called after MightThrowJSException() is called.
 void
 JSErrorResult(JSContext *cx, ErrorResult& aRv, const char *msg)
 {
@@ -1065,5 +1129,6 @@ JSErrorResult(JSContext *cx, ErrorResult& aRv, const char *msg)
 
 // Helpers ===================================================================
 
+#undef SANDBOX_CONFIG
 } // namespace dom
 } // namespace mozilla

@@ -6,20 +6,17 @@
 
 interface Principal;
 
-callback SandboxCallback = void (any message);
-
 [Constructor,
  Constructor(Label privacy),
  Constructor(Label privacy, Label trust)
  ]
 interface Sandbox {
 
-  //boolean subsumes(Sandbox other);
-
+  // Schedule code in the sandbox
   [Throws] void schedule(DOMString src);
 
+  // Sandbox privacy and trust labels
   [Pure] readonly attribute Label privacy;
-
   [Pure] readonly attribute Label trust;
 
   // Was the sandbox used?
@@ -32,7 +29,11 @@ interface Sandbox {
   // Send message to sandbox
   [Throws] void postMessage(any message);
 
+  // Read sandbox result
   [GetterThrows] readonly attribute any result;
+
+  // Grant sandbox ownership of fresh principal
+  //void grant(FreshPrincipal principal);
 
   // Static ==================================================================
   //TODO: move into partial interface
@@ -70,6 +71,19 @@ interface Sandbox {
 
   // Get the compartment principal
   static DOMString getPrincipal();
+
+  // Add principal to ownership list
+  static void own(FreshPrincipal principal);
+
+
+  // Get principals owned by compartment
+  //sequence<Principal> getOwnedFreshPrincipals();
+
+  // privileges
+
+  // Get the underlying trust label
+  static Label? getPrivileges();
+
   // Static ==================================================================
 
   // temporary*********************************************************
@@ -82,4 +96,3 @@ interface Sandbox {
 interface SandboxEventTarget : EventTarget {
   [SetterThrows] attribute EventHandler onmessage;
 };
-

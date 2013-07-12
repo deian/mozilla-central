@@ -65,10 +65,6 @@ Role::Constructor(const GlobalObject& global, const nsAString& principal,
                   ErrorResult& aRv)
 {
   nsRefPtr<Role> role = new Role(principal, aRv);
-  /*
-  nsRefPtr<Role> role = new Role();
-  role->_Or(principal,aRv);
-  */
   if (aRv.Failed())
     return nullptr;
   return role.forget();
@@ -173,7 +169,7 @@ Role::Stringify(nsString& retval)
     char *origin = NULL;
     nsresult rv = mPrincipals[i]->GetOrigin(&origin);
     if (NS_FAILED(rv) || !origin) {
-      retval.Append(NS_LITERAL_STRING("<unknown-principal>"));
+      retval.Append(NS_LITERAL_STRING("x-bogus:<unknown-principal>"));
     } else {
       AppendASCIItoUTF16(origin, retval);
       NS_Free(origin);

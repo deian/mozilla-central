@@ -108,7 +108,7 @@ Label::Equals(mozilla::dom::Label& other)
     return false;
 
   RoleComparator cmp;
-  for (unsigned i=0; i<mRoles.Length(); ++i) {
+  for (unsigned i = 0; i<mRoles.Length(); ++i) {
     /* This label contains a role that the other label does not, hence
      * they cannot be equal. */
     if (!otherRoles->Contains(mRoles[i],cmp))
@@ -119,13 +119,14 @@ Label::Equals(mozilla::dom::Label& other)
 }
 
 bool
-Label::Subsumes(mozilla::dom::Label& other)
+Label::Subsumes(const mozilla::dom::Label& other)
 {
   // Break out early if the other and this are the same.
   if (&other == this)
     return true;
 
-  RoleArray *otherRoles = other.GetDirectRoles();
+  RoleArray *otherRoles =
+    const_cast<mozilla::dom::Label&>(other).GetDirectRoles();
 
   /* There are more roles in the other formula, this label cannot
    * imply (subsume) it. */
@@ -133,7 +134,7 @@ Label::Subsumes(mozilla::dom::Label& other)
     return false;
 
   RoleSubsumeComparator cmp;
-  for (unsigned i=0; i<otherRoles->Length(); ++i) {
+  for (unsigned i = 0; i<otherRoles->Length(); ++i) {
     /* The other label has a role (the ith role) that no role in this
      * label subsumes. */
     if (!mRoles.Contains(otherRoles->ElementAt(i),cmp))
@@ -233,7 +234,7 @@ Label::Stringify(nsString& retval)
 }
 
 bool
-Label::Subsumes(nsIPrincipal* priv, mozilla::dom::Label& other)
+Label::Subsumes(nsIPrincipal* priv, const mozilla::dom::Label& other)
 {
   if (!priv)
     return Subsumes(other);
@@ -243,7 +244,8 @@ Label::Subsumes(nsIPrincipal* priv, mozilla::dom::Label& other)
 }
 
 bool
-Label::Subsumes(mozilla::dom::Role &role, mozilla::dom::Label& other)
+Label::Subsumes(const mozilla::dom::Role &role,
+                const mozilla::dom::Label& other)
 {
   // Break out early if the other and this are the same.
   // Or the other is an empty label.
@@ -254,15 +256,40 @@ Label::Subsumes(mozilla::dom::Role &role, mozilla::dom::Label& other)
     return Subsumes(other);
 
   ErrorResult aRv;
+  nsRefPtr<Label> privs =
+    new Label(const_cast<mozilla::dom::Role &>(role), aRv);
+
+  if (aRv.Failed())
+    return Subsumes(other);
+
+  return Subsumes(*privs, other);
+}
+
+bool
+Label::Subsumes(const mozilla::dom::Label &privs, 
+                const mozilla::dom::Label& other)
+{
+  // Break out early if the other and this are the same.
+  // Or the other is an empty label.
+  if (&other == this || other.IsEmpty())
+    return true;
+
+  ErrorResult aRv;
   nsRefPtr<Label> _this = Clone(aRv);
   if (aRv.Failed())
     return false;
-  _this->_And(role, aRv);
+  _this->_And(const_cast<mozilla::dom::Label&>(privs), aRv);
   if (aRv.Failed())
     return false;
   return _this->Subsumes(other);
 }
 
+void
+Label::_And(nsIPrincipal *p, ErrorResult& aRv)
+{
+  nsRefPtr<Role> role = new Role(p);
+  _And(*role, aRv);
+}
 
 void
 Label::_And(mozilla::dom::Role& role, ErrorResult& aRv)
@@ -274,7 +301,7 @@ void
 Label::_And(mozilla::dom::Label& label, ErrorResult& aRv)
 {
   RoleArray *otherRoles = label.GetDirectRoles();
-  for (unsigned i=0; i < otherRoles->Length(); ++i) {
+  for (unsigned i = 0; i < otherRoles->Length(); ++i) {
     _And(*(otherRoles->ElementAt(i)), aRv);
     if (aRv.Failed()) return;
   }
@@ -294,7 +321,7 @@ Label::_Or(mozilla::dom::Role& role, ErrorResult& aRv)
 
   Label tmpLabel;
 
-  for (unsigned i=0; i < mRoles.Length(); ++i) {
+  for (unsigned i = 0; i < mRoles.Length(); ++i) {
     nsRefPtr<Role> nRole = mRoles.ElementAt(i);
     nRole->_Or(role);
 
@@ -308,21 +335,22 @@ void
 Label::_Or(mozilla::dom::Label& label, ErrorResult& aRv)
 {
   RoleArray *otherRoles = label.GetDirectRoles();
-  for (unsigned i=0; i < otherRoles->Length(); ++i) {
+  for (unsigned i = 0; i < otherRoles->Length(); ++i) {
     _Or(*(otherRoles->ElementAt(i)), aRv);
     if (aRv.Failed()) return;
   }
 }
 
 void
-Label::Reduce(nsIPrincipal *priv)
+Label::Reduce(mozilla::dom::Label &label)
 {
-  if (!priv) return;
+  if (label.IsEmpty()) return;
 
-  // Remove any elements that the privilege subsumes
+  RoleArray *roles = const_cast<mozilla::dom::Label&>(label).GetDirectRoles();
   RoleSubsumeInvComparator cmp;
-  nsRefPtr<Role> privRole = new Role(priv);
-  while(mRoles.RemoveElement(privRole, cmp)) ;
+  for (unsigned i = 0; i < roles->Length(); ++i) {
+    while (mRoles.RemoveElement(roles->ElementAt(i), cmp)) ;
+  }
 }
 
 already_AddRefed<nsIPrincipal>

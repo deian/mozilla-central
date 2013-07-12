@@ -494,6 +494,9 @@ DECLARE_GET_LABEL(PrivacyClearance);
 DECLARE_SET_LABEL(TrustClearance);
 DECLARE_GET_LABEL(TrustClearance);
 
+DECLARE_SET_LABEL(Privileges);
+DECLARE_GET_LABEL(Privileges);
+
 #undef DECLARE_SET_LABEL
 #undef DECLARE_GET_LABEL
 

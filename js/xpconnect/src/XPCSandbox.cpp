@@ -22,6 +22,9 @@ using namespace mozilla::dom;
 namespace xpc {
 namespace sandbox {
 
+#define SANDBOX_CONFIG(compartment) \
+    EnsureCompartmentPrivate((compartment))->sandboxConfig
+
 static void
 SetCompartmentPrincipal(JSCompartment *compartment, nsIPrincipal *principal)
 {
@@ -29,13 +32,9 @@ SetCompartmentPrincipal(JSCompartment *compartment, nsIPrincipal *principal)
 }
 
 
-#define SANDBOX_CONFIG(compartment) \
-    EnsureCompartmentPrivate((compartment))->sandboxConfig
-
-
 // Turn compartment into a Sandboxed compartment. If a sandbox is provided the
 // compartment sandbox is set; otherwise sandbox-mode is enabled with the
-// compartment label iset to the public label.
+// compartment label set to the public label.
 NS_EXPORT_(void)
 EnableCompartmentSandbox(JSCompartment *compartment,
                          mozilla::dom::Sandbox *sandbox)
@@ -57,6 +56,13 @@ EnableCompartmentSandbox(JSCompartment *compartment,
     SANDBOX_CONFIG(compartment).SetPrivacyLabel(privacy);
     SANDBOX_CONFIG(compartment).SetTrustLabel(trust);
   }
+
+  // set privileges
+
+  nsRefPtr<Label> privileges = new Label();
+  MOZ_ASSERT(privileges);
+
+  SANDBOX_CONFIG(compartment).SetPrivileges(privileges);
 }
 
 NS_EXPORT_(bool)
@@ -90,6 +96,11 @@ IsCompartmentSandboxMode(JSCompartment *compartment)
 static void
 AdjustSecurityPerimeter(JSCompartment *compartment)
 {
+
+  // In sandbox, no need to adjust underlying principal/policy
+  if (!SANDBOX_CONFIG(compartment).isSandboxMode())
+    return;
+
   nsresult rv;
 
   nsRefPtr<Label> privacy =
@@ -190,7 +201,6 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
 
     SetCompartmentPrincipal(compartment, compPrincipal);
 
-//#if 0
     nsCOMPtr<nsIURI> baseURI;
     nsresult rv = compPrincipal->GetURI(getter_AddRefs(baseURI));
     MOZ_ASSERT(NS_SUCCEEDED(rv));
@@ -198,44 +208,37 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
     // set the compartment location
     EnsureCompartmentPrivate(compartment)->SetLocationURI(baseURI);
 
+    // Get the compartment global
+    nsCOMPtr<nsIGlobalObject> global =
+      GetNativeForGlobal(JS_GetGlobalForCompartmentOrNull(compartment));
 
-    if (SANDBOX_CONFIG(compartment).isSandboxMode()) {
-      
-      // Get the compartment global
-      nsCOMPtr<nsIGlobalObject> global =
-        GetNativeForGlobal(JS_GetGlobalForCompartmentOrNull(compartment));
+    // Get the underlying window
+    nsCOMPtr<nsIDOMWindow> win(do_QueryInterface(global));
+    MOZ_ASSERT(win);
 
-      // Get the underlying window
-      nsCOMPtr<nsIDOMWindow> win(do_QueryInterface(global));
-      MOZ_ASSERT(win);
+    // Get the window document
+    nsCOMPtr<nsIDOMDocument> domDoc;
+    win->GetDocument(getter_AddRefs(domDoc)); MOZ_ASSERT(domDoc);
 
-      // Get the window document
-      nsCOMPtr<nsIDOMDocument> domDoc;
-      win->GetDocument(getter_AddRefs(domDoc));
-      MOZ_ASSERT(domDoc);
+    nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+    MOZ_ASSERT(doc);
 
-      nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
-      MOZ_ASSERT(doc);
+    // Set the document principal
+    doc->SetPrincipal(compPrincipal);
 
-      // Set the document principal
-      doc->SetPrincipal(compPrincipal);
+    // Change the document base uri to the nullprincipal uri
+    doc->SetBaseURI(baseURI);
 
-      // Change the document base uri to the nullprincipal uri
-      doc->SetBaseURI(baseURI);
+    // Set iframe sandbox flags most restrcting flags:
+    uint32_t flags =
+      nsContentUtils::ParseSandboxAttributeToFlags(NS_LITERAL_STRING(""));
 
-      // Set iframe sandbox flags most restrcting flags:
-      uint32_t flags = 
-        nsContentUtils::ParseSandboxAttributeToFlags(NS_LITERAL_STRING(""));
+    doc->SetSandboxFlags(flags);
 
-      doc->SetSandboxFlags(flags);
-
-    }
-//#endif
+    // Set CSP since we created a new principal
+    rv = compPrincipal->SetCsp(csp);
+    MOZ_ASSERT(NS_SUCCEEDED(rv)); // depends on bug 886164
   }
-
-  // Set CSP
-  rv = compPrincipal->SetCsp(csp);
-  MOZ_ASSERT(NS_SUCCEEDED(rv)); // depends on bug 886164
 }
 
 
@@ -297,8 +300,31 @@ DEFINE_GET_LABEL(PrivacyClearance)
 DEFINE_SET_LABEL(TrustClearance)
 DEFINE_GET_LABEL(TrustClearance)
 
+
 #undef DEFINE_SET_LABEL
 #undef DEFINE_GET_LABEL
+
+// This function gets a copy of the compartment privileges.
+// IMPORTANT: the label corresponding to the privilege should NOT be
+// cached, since the content principals change and thus privileges are
+// "revoked".
+NS_EXPORT_(already_AddRefed<mozilla::dom::Label>)
+GetCompartmentPrivileges(JSCompartment*compartment)
+{
+  ErrorResult aRv;
+
+  nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
+  privs = privs->Clone(aRv);
+
+  if (aRv.Failed())
+    privs = new Label(); // empty privileges
+
+  nsCOMPtr<nsIPrincipal> prin = GetCompartmentPrincipal(compartment);
+  // Add underlying principal to set of privileges
+  privs->_And(prin, aRv);
+
+  return privs.forget();
+}
 
 NS_EXPORT_(mozilla::dom::Sandbox*)
 GetCompartmentSandbox(JSCompartment *compartment)
@@ -317,13 +343,9 @@ NS_EXPORT_(bool)
 GuardRead(JSCompartment *compartment,
           mozilla::dom::Label &privacy, mozilla::dom::Label &trust)
 {
-  nsIPrincipal *priv = nullptr;
-  bool sandboxMode = SANDBOX_CONFIG(compartment).isSandboxMode();
+  ErrorResult aRv;
 
-  // If the compartment is not a sandbox (it's content) and so we
-  // should treat the principal as a privilege
-  if (sandboxMode)
-    priv = GetCompartmentPrincipal(compartment);
+  nsRefPtr<Label> privs = GetCompartmentPrivileges(compartment);
 
   nsRefPtr<mozilla::dom::Label> compPrivacy =
     xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
@@ -334,8 +356,10 @@ GuardRead(JSCompartment *compartment,
   if (!compPrivacy || !compTrust)
     return false;
 
-  // <privacy,trust> [=_priv <compPrivacy,compTrust>
-  if (compPrivacy->Subsumes(priv, privacy) && trust.Subsumes(priv, *compTrust))
+
+  // <privacy,trust> [=_privs <compPrivacy,compTrust>
+  if (compPrivacy->Subsumes(*privs, privacy) && 
+      trust.Subsumes(*privs, *compTrust))
     return true;
 
   // Compartment cannot directly read data, see if we can taint be to
@@ -346,28 +370,28 @@ GuardRead(JSCompartment *compartment,
   nsRefPtr<mozilla::dom::Label> clrTrust   =
     xpc::sandbox::GetCompartmentTrustClearance(compartment);
 
+  bool sandboxMode = SANDBOX_CONFIG(compartment).isSandboxMode();
 
   if ((sandboxMode && !clrPrivacy && !clrTrust) || 
       // in sandbox-mode without clearance
-      (clrPrivacy->Subsumes(priv, privacy) && trust.Subsumes(priv, *clrTrust)))
-      // <privacy,trust> [=_priv <clrPrivacy,clrTrust>
+      (clrPrivacy->Subsumes(*privs,privacy) && 
+       trust.Subsumes(*privs, *clrTrust)))
+      // <privacy,trust> [=_privs <clrPrivacy,clrTrust>
   {
-
     // Label of object is not above clearance (if clearance is set),
     // so raise compartment label to allow the read.
-    ErrorResult aRv;
 
     // join privacy
     compPrivacy->_And(privacy, aRv); 
     NS_ASSERTION(!aRv.Failed(), "internal _And clone failed.");
-    if(aRv.Failed()) return false;
-    compPrivacy->Reduce(priv);
+    if (aRv.Failed()) return false;
+    compPrivacy->Reduce(*privs);
 
     // join trust
     compTrust->_Or(trust, aRv);
     NS_ASSERTION(!aRv.Failed(), "internal _Or clone failed.");
-    if(aRv.Failed()) return false;
-    compTrust->Reduce(priv);
+    if (aRv.Failed()) return false;
+    compTrust->Reduce(*privs);
 
     AdjustSecurityPerimeter(compartment);
 
@@ -398,16 +422,16 @@ GuardRead(JSCompartment *compartment, JSCompartment *source)
   
   // When reading from sandbox, use the sandbox label, which is the
   // clearance.
-  nsRefPtr<mozilla::dom::Label> priv =
+  nsRefPtr<mozilla::dom::Label> privacy =
     sandbox ? xpc::sandbox::GetCompartmentPrivacyClearance(source)
             : xpc::sandbox::GetCompartmentPrivacyLabel(source);
   nsRefPtr<mozilla::dom::Label> trust =
     sandbox ? xpc::sandbox::GetCompartmentTrustClearance(source)
             : xpc::sandbox::GetCompartmentTrustLabel(source);
 
-  if (!priv || !trust) return false;
+  if (!privacy || !trust) return false;
 
-  return GuardRead(compartment, *priv, *trust);
+  return GuardRead(compartment, *privacy, *trust);
 }
 
 #undef SANDBOX_CONFIG

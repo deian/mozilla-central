@@ -53,7 +53,8 @@ public:
 
   bool Equals(mozilla::dom::Label& other);
 
-  bool Subsumes(mozilla::dom::Label& other);
+  bool Subsumes(mozilla::dom::Label& other) { return Subsumes(other); }
+  bool Subsumes(const mozilla::dom::Label& other);
 
   already_AddRefed<Label> And(mozilla::dom::Role& role, ErrorResult& aRv);
   already_AddRefed<Label> And(mozilla::dom::Label& other, ErrorResult& aRv);
@@ -68,10 +69,12 @@ public:
   void Stringify(nsString& retval);
 
 public: // C++ only:
-  //TODO: const these:
-  bool Subsumes(nsIPrincipal* priv, mozilla::dom::Label& other);
-  bool Subsumes(mozilla::dom::Role& role, mozilla::dom::Label& other);
+  bool Subsumes(nsIPrincipal* priv, const mozilla::dom::Label& other);
+  bool Subsumes(const mozilla::dom::Role& role, const mozilla::dom::Label& other);
+  bool Subsumes(const mozilla::dom::Label& privs, const mozilla::dom::Label& other);
 
+  //TODO: const these:
+  void _And(nsIPrincipal *p, ErrorResult& aRv);
   void _And(mozilla::dom::Role& role, ErrorResult& aRv);
   void _And(mozilla::dom::Label& label, ErrorResult& aRv);
   void _Or(mozilla::dom::Role& role, ErrorResult& aRv);
@@ -79,7 +82,7 @@ public: // C++ only:
 
   // Reduce label by removing any elements that he supplied privilege
   // subsumes
-  void Reduce(nsIPrincipal* priv);
+  void Reduce(mozilla::dom::Label &label);
 
   // Get principal if label is singleton
   already_AddRefed<nsIPrincipal> GetPrincipalIfSingleton() const;
