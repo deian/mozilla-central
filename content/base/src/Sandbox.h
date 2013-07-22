@@ -122,6 +122,7 @@ public: // DOM interface =====================================================
   }
   JS::Value GetResult(JSContext* cx, ErrorResult& aRv);
 
+  void Grant(mozilla::dom::FreshPrincipal& principal);
 public: 
   // C++ only
   // FIXME: these should not really be public

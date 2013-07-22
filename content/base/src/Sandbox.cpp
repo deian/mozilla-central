@@ -434,6 +434,13 @@ Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
   }
   return mResult;
 }
+void 
+Sandbox::Grant(mozilla::dom::FreshPrincipal& principal)
+{
+  // get sandbox compartment
+  //Own(glob, principal);
+}
+
 
 inline void
 Sandbox::SetResult(JS::Handle<JS::Value> val, ResultType type)

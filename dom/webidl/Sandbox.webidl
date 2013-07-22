@@ -33,7 +33,7 @@ interface Sandbox {
   [GetterThrows] readonly attribute any result;
 
   // Grant sandbox ownership of fresh principal
-  //void grant(FreshPrincipal principal);
+  void grant(FreshPrincipal principal);
 
   // Static ==================================================================
   //TODO: move into partial interface
