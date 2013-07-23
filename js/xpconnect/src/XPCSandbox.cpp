@@ -46,7 +46,14 @@ EnableCompartmentSandbox(JSCompartment *compartment,
 
   if (sandbox) {
     SANDBOX_CONFIG(compartment).SetSandbox(sandbox);
-  } else { /* sandbox-mode */
+
+    // set empty privileges
+
+    nsRefPtr<Label> privileges = new Label();
+    MOZ_ASSERT(privileges);
+
+    SANDBOX_CONFIG(compartment).SetPrivileges(privileges);
+  } else { // sandbox-mode
     nsRefPtr<Label> privacy = new Label();
     MOZ_ASSERT(privacy);
 
@@ -55,14 +62,33 @@ EnableCompartmentSandbox(JSCompartment *compartment,
 
     SANDBOX_CONFIG(compartment).SetPrivacyLabel(privacy);
     SANDBOX_CONFIG(compartment).SetTrustLabel(trust);
+
+    // set privileges to compartment principal
+
+    nsCOMPtr<nsIPrincipal> privPrin;
+    { // make "copy" of compartment principal
+      nsresult rv;
+      nsCOMPtr<nsIPrincipal> prin = GetCompartmentPrincipal(compartment);
+
+      nsCOMPtr<nsIScriptSecurityManager> secMan =
+        nsContentUtils::GetSecurityManager();
+      MOZ_ASSERT(secMan);
+
+      nsCOMPtr<nsIURI> uri;
+      rv = prin->GetURI(getter_AddRefs(uri));
+      MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+      rv = secMan->GetNoAppCodebasePrincipal(uri, getter_AddRefs(privPrin));
+      MOZ_ASSERT(NS_SUCCEEDED(rv));
+    }
+
+    nsRefPtr<Role> privRole = new Role(privPrin);
+    ErrorResult aRv;
+    nsRefPtr<Label> privileges = new Label(*privRole, aRv);
+    MOZ_ASSERT(privileges);
+
+    SANDBOX_CONFIG(compartment).SetPrivileges(privileges);
   }
-
-  // set privileges
-
-  nsRefPtr<Label> privileges = new Label();
-  MOZ_ASSERT(privileges);
-
-  SANDBOX_CONFIG(compartment).SetPrivileges(privileges);
 }
 
 NS_EXPORT_(bool)
@@ -86,6 +112,20 @@ IsCompartmentSandboxMode(JSCompartment *compartment)
   return SANDBOX_CONFIG(compartment).isSandboxMode();
 }
 
+NS_EXPORT_(void)
+FreezeCompartmentSandbox(JSCompartment *compartment)
+{
+  MOZ_ASSERT(compartment);
+  return SANDBOX_CONFIG(compartment).Freeze();
+}
+
+NS_EXPORT_(bool)
+IsCompartmentSandboxFrozen(JSCompartment *compartment)
+{
+  MOZ_ASSERT(compartment);
+  return SANDBOX_CONFIG(compartment).isFrozen();
+}
+
 // This function adjusts the "security permieter".
 // Specifically, it adjusts:
 // 1. The CSP policy to restrict with whom the current compartment may
@@ -98,13 +138,16 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
 {
 
   // In sandbox, no need to adjust underlying principal/policy
+  // Only adjust sandbox-mode compartments
   if (!SANDBOX_CONFIG(compartment).isSandboxMode())
     return;
 
   nsresult rv;
 
-  nsRefPtr<Label> privacy =
-    SANDBOX_CONFIG(compartment).GetPrivacyLabel();
+  // Get privacy label and reduce it:
+  nsRefPtr<Label> privacy = SANDBOX_CONFIG(compartment).GetPrivacyLabel();
+  nsRefPtr<Label> privs = GetCompartmentPrivileges(compartment);
+  privacy->Reduce(*privs);
 
   // Case 1: Empty/public label, don't loosen/impose new restrictions
   if (privacy->IsEmpty())
@@ -112,11 +155,6 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
 
   nsCOMPtr<nsIPrincipal> compPrincipal = GetCompartmentPrincipal(compartment);
   MOZ_ASSERT(compPrincipal);
-
-  PrincipalArray* labelPrincipals =
-    privacy->GetPrincipalsIfSingleton();
-
-  bool disableStorage = false;
 
   // If CSP policy exists, get it
   nsCOMPtr<nsIContentSecurityPolicy> csp;
@@ -128,7 +166,7 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
   rv = compPrincipal->GetURI(getter_AddRefs(uri));
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
-  // Create a new CSP object
+  // Create a new CSP object, if none exist
   if(!csp) {
     csp = do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
     MOZ_ASSERT(NS_SUCCEEDED(rv) && csp);
@@ -136,10 +174,13 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
     MOZ_ASSERT(NS_SUCCEEDED(rv)); // depends on bug 886164
   }
 
+  PrincipalArray* labelPrincipals = privacy->GetPrincipalsIfSingleton();
+  bool disableStorage = false;
+
   if (labelPrincipals && labelPrincipals->Length() > 0) {
 
-    // Same as as Case 1, should not really occur since we always reduce
-    // sandbox-mode compartment labels
+    // Same as as Case 1, should not really occur since we reduce
+    // sandbox-mode label above
     if (MOZ_UNLIKELY(labelPrincipals->Length() == 1  &&
         labelPrincipals->ElementAt(0)->Equals(compPrincipal)))
       return;
@@ -150,6 +191,7 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
     // origin.
     disableStorage = true;
 
+    // create list of origins
     nsString origins;
     for (unsigned i = 0; i < labelPrincipals->Length(); ++i) {
       char *origin = NULL;
@@ -171,6 +213,7 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
            + NS_LITERAL_STRING(";connect-src ") + origins
            + NS_LITERAL_STRING(";");
 
+    //XXX why was I getting the uri of the first principal??
     rv = labelPrincipals->ElementAt(0)->GetURI(getter_AddRefs(uri));
     MOZ_ASSERT(NS_SUCCEEDED(rv));
 
@@ -196,6 +239,7 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
 
 
   if (disableStorage) {
+    // Swap the compartment principal with a new null principal
     compPrincipal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
     MOZ_ASSERT (NS_SUCCEEDED(rv));
 
@@ -319,10 +363,6 @@ GetCompartmentPrivileges(JSCompartment*compartment)
   if (aRv.Failed())
     privs = new Label(); // empty privileges
 
-  nsCOMPtr<nsIPrincipal> prin = GetCompartmentPrincipal(compartment);
-  // Add underlying principal to set of privileges
-  privs->_And(prin, aRv);
-
   return privs.forget();
 }
 
@@ -352,6 +392,7 @@ GuardRead(JSCompartment *compartment,
   nsRefPtr<mozilla::dom::Label> compTrust =
     xpc::sandbox::GetCompartmentTrustLabel(compartment);
 
+
   // If any of the labels are missing, don't allow the information flow
   if (!compPrivacy || !compTrust)
     return false;
@@ -364,6 +405,10 @@ GuardRead(JSCompartment *compartment,
 
   // Compartment cannot directly read data, see if we can taint be to
   // allow it to read.
+
+  // Compartment is frozen, cannot raise label
+  if (xpc::sandbox::IsCompartmentSandboxFrozen(compartment))
+    return false;
 
   nsRefPtr<mozilla::dom::Label> clrPrivacy =
     xpc::sandbox::GetCompartmentPrivacyClearance(compartment);
@@ -385,13 +430,13 @@ GuardRead(JSCompartment *compartment,
     compPrivacy->_And(privacy, aRv); 
     NS_ASSERTION(!aRv.Failed(), "internal _And clone failed.");
     if (aRv.Failed()) return false;
-    compPrivacy->Reduce(*privs);
+    //TODO: compPrivacy->Reduce(*privs);
 
     // join trust
     compTrust->_Or(trust, aRv);
     NS_ASSERTION(!aRv.Failed(), "internal _Or clone failed.");
     if (aRv.Failed()) return false;
-    compTrust->Reduce(*privs);
+    //TODO: compTrust->Reduce(*privs);
 
     AdjustSecurityPerimeter(compartment);
 
@@ -404,7 +449,7 @@ GuardRead(JSCompartment *compartment,
 // Check if information can flow from compartment |source| to
 // compartment |compartment|. If reading from a sandbox, the sandbox
 // label is used; otherwise the current compartment label is used.
-// For this to be safe we must not allow a comartment to read the
+// For this to be safe we must not allow a compartment to read the
 // label of a non-sandbox, i.e., sandbox-mode, compartment.
 NS_EXPORT_(bool)
 GuardRead(JSCompartment *compartment, JSCompartment *source)

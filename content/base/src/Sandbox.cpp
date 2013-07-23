@@ -523,16 +523,46 @@ Sandbox::IsSandboxMode(const GlobalObject& global)
   return xpc::sandbox::IsCompartmentSandboxMode(compartment);
 }
 
+void 
+Sandbox::Freeze(const GlobalObject& global, /*JSContext* cx,*/ ErrorResult& aRv)
+{
+  //aRv.MightThrowJSException();
+  if (!IsSandboxMode(global)) {
+    //JSErrorResult(cx, aRv, "Only sandbox-mode can be frozen.");
+    aRv.Throw(NS_ERROR_FAILURE);
+    return;
+  }
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
+  xpc::sandbox::FreezeCompartmentSandbox(compartment);
+}
+
+bool 
+Sandbox::IsFrozen(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
+{
+  aRv.MightThrowJSException();
+  if (!IsSandboxMode(global)) {
+    JSErrorResult(cx, aRv, "Only sandbox-mode can be frozen.");
+    return false;
+  }
+
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
+  return xpc::sandbox::IsCompartmentSandboxFrozen(compartment);
+}
+
 // label
 
-bool
+void
 Sandbox::SetPrivacyLabel(const GlobalObject& global, JSContext* cx, 
                          mozilla::dom::Label& aLabel, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
-  if (!IsSandboxed(global)) {
-    JSErrorResult(cx, aRv, "Must enable sandbox-mode to set privacy label.");
-    return false;
+
+  if (IsFrozen(global, cx, aRv)) {
+    JSErrorResult(cx, aRv, 
+                  "Cannot set label for a frozen sandboxed compartment.");
+    return;
   }
 
   JSCompartment *compartment =
@@ -543,18 +573,21 @@ Sandbox::SetPrivacyLabel(const GlobalObject& global, JSContext* cx,
   nsRefPtr<Label> currentLabel = GetPrivacyLabel(global, cx);
   if (!currentLabel) {
     JSErrorResult(cx, aRv, "Failed to get current privacy label.");
-    return false;
+    return;
   }
 
-  if (!aLabel.Subsumes(*privs, *currentLabel))
-    return false;
+  if (!aLabel.Subsumes(*privs, *currentLabel)) {
+    JSErrorResult(cx, aRv, "Label is not above the current label.");
+    return;
+  }
 
   nsRefPtr<Label> currentClearance = GetPrivacyClearance(global, cx);
-  if (currentClearance && !currentClearance->Subsumes(aLabel))
-    return false;
+  if (currentClearance && !currentClearance->Subsumes(aLabel)) {
+    JSErrorResult(cx, aRv, "Label is not below the current clearance.");
+    return;
+  }
 
   xpc::sandbox::SetCompartmentPrivacyLabel(compartment, &aLabel);
-  return true;
 }
 
 // Helper macro for retriveing the privacy/trust label/clearance
@@ -574,14 +607,16 @@ Sandbox::GetPrivacyLabel(const GlobalObject& global, JSContext* cx)
   GET_LABEL(PrivacyLabel);
 }
 
-bool
+void
 Sandbox::SetTrustLabel(const GlobalObject& global, JSContext* cx, 
               mozilla::dom::Label& aLabel, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
-  if (!IsSandboxed(global)) {
-    JSErrorResult(cx, aRv, "Must enable sandbox-mode to set trust label.");
-    return false;
+
+  if (IsFrozen(global, cx, aRv)) {
+    JSErrorResult(cx, aRv, 
+                  "Cannot set label for a frozen sandboxed compartment.");
+    return;
   }
 
   JSCompartment *compartment =
@@ -592,18 +627,21 @@ Sandbox::SetTrustLabel(const GlobalObject& global, JSContext* cx,
   nsRefPtr<Label> currentLabel = GetTrustLabel(global, cx);
   if (!currentLabel) {
     JSErrorResult(cx, aRv, "Failed to get current trust label.");
-    return false;
+    return;
   }
 
-  if (!currentLabel->Subsumes(*privs, aLabel))
-    return false;
+  if (!currentLabel->Subsumes(*privs, aLabel)) {
+    JSErrorResult(cx, aRv, "Label is not below the current label.");
+    return;
+  }
 
   nsRefPtr<Label> currentClearance = GetTrustClearance(global, cx);
-  if (currentClearance && !aLabel.Subsumes(*currentClearance))
-    return false;
+  if (currentClearance && !aLabel.Subsumes(*currentClearance)) {
+    JSErrorResult(cx, aRv, "Label is not above the current clearance.");
+    return;
+  }
 
   xpc::sandbox::SetCompartmentTrustLabel(compartment, &aLabel);
-  return true;
 }
 
 already_AddRefed<Label>
@@ -614,15 +652,22 @@ Sandbox::GetTrustLabel(const GlobalObject& global, JSContext* cx)
 
 //clearance
 
-bool
+void
 Sandbox::SetPrivacyClearance(const GlobalObject& global, JSContext* cx, 
                              mozilla::dom::Label& aLabel, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
-  if (!IsSandboxed(global)) {
+
+  if (IsFrozen(global, cx, aRv)) {
     JSErrorResult(cx, aRv, 
-                  "Must enable sandbox-mode to set privacy clearance.");
-    return false;
+                  "Cannot set clearance for a frozen sandboxed compartment.");
+    return;
+  }
+
+  if (!IsSandboxMode(global)) {
+    JSErrorResult(cx, aRv, 
+                  "Can only set the clearance in a sandbox-mode compartment.");
+    return;
   }
 
   JSCompartment *compartment =
@@ -631,20 +676,23 @@ Sandbox::SetPrivacyClearance(const GlobalObject& global, JSContext* cx,
   nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
   nsRefPtr<Label> currentClearance = GetPrivacyClearance(global, cx);
-  if (currentClearance && !currentClearance->Subsumes(*privs, aLabel))
-    return false;
+  if (currentClearance && !currentClearance->Subsumes(*privs, aLabel)) {
+    JSErrorResult(cx, aRv, "Clearance is not below the current clearance.");
+    return;
+  }
 
   nsRefPtr<Label> currentLabel = GetPrivacyLabel(global, cx);
   if (!currentLabel) {
     JSErrorResult(cx, aRv, "Failed to get current trust label.");
-    return false;
+    return;
   }
 
-  if (!aLabel.Subsumes(*currentClearance))
-    return false;
+  if (!aLabel.Subsumes(*currentLabel)) {
+    JSErrorResult(cx, aRv, "Clearance is not above the current label.");
+    return;
+  }
 
   xpc::sandbox::SetCompartmentPrivacyClearance(compartment, &aLabel);
-  return true;
 }
 
 already_AddRefed<Label>
@@ -653,14 +701,22 @@ Sandbox::GetPrivacyClearance(const GlobalObject& global, JSContext* cx)
   GET_LABEL(PrivacyClearance);
 }
 
-bool
+void
 Sandbox::SetTrustClearance(const GlobalObject& global, JSContext* cx, 
                            mozilla::dom::Label& aLabel, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
-  if (!IsSandboxed(global)) {
-    JSErrorResult(cx, aRv, "Must enable sandbox-mode to set trust clearance.");
-    return false;
+
+  if (IsFrozen(global, cx, aRv)) {
+    JSErrorResult(cx, aRv, 
+                  "Cannot set clearance for a frozen sandboxed compartment.");
+    return;
+  }
+
+  if (!IsSandboxMode(global)) {
+    JSErrorResult(cx, aRv,
+                  "Can only set the clearance in a sandbox-mode compartment.");
+    return;
   }
 
   JSCompartment *compartment =
@@ -669,21 +725,23 @@ Sandbox::SetTrustClearance(const GlobalObject& global, JSContext* cx,
   nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
   nsRefPtr<Label> currentClearance = GetTrustClearance(global, cx);
-  if (currentClearance && !aLabel.Subsumes(*privs, *currentClearance))
-    return false;
+  if (currentClearance && !aLabel.Subsumes(*privs, *currentClearance)) {
+    JSErrorResult(cx, aRv, "Clearance is not above the current clearance.");
+    return;
+  }
 
   nsRefPtr<Label> currentLabel = GetTrustLabel(global, cx);
   if (!currentLabel) {
     JSErrorResult(cx, aRv, "Failed to get current trust label.");
-    return false;
+    return;
   }
 
-  if (!currentLabel->Subsumes(aLabel))
-    return false;
-
+  if (!currentLabel->Subsumes(aLabel)) {
+    JSErrorResult(cx, aRv, "Clearance is not below the current label.");
+    return;
+  }
 
   xpc::sandbox::SetCompartmentTrustClearance(compartment, &aLabel);
-  return true;
 }
 
 already_AddRefed<Label>

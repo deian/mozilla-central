@@ -142,27 +142,30 @@ public: // Static DOM interface ==============================================
   static bool IsSandbox(const GlobalObject& global);
   static bool IsSandboxMode(const GlobalObject& global);
 
+  static void Freeze(const GlobalObject& global, /*JSContext* cx,*/ ErrorResult& aRv);
+  static bool IsFrozen(const GlobalObject& global, JSContext* cx, ErrorResult& aRv);
+
   // label
 
-  static bool SetPrivacyLabel(const GlobalObject& global, JSContext* cx,
+  static void SetPrivacyLabel(const GlobalObject& global, JSContext* cx,
                               mozilla::dom::Label& aLabel, ErrorResult& aRv);
   static already_AddRefed<Label> GetPrivacyLabel(const GlobalObject& global,
                                                  JSContext* cx);
 
-  static bool SetTrustLabel(const GlobalObject& global, JSContext* cx,
+  static void SetTrustLabel(const GlobalObject& global, JSContext* cx,
                             mozilla::dom::Label& aLabel, ErrorResult& aRv);
   static already_AddRefed<Label> GetTrustLabel(const GlobalObject& global,
                                                JSContext* cx);
 
   // clearance
 
-  static bool SetPrivacyClearance(const GlobalObject& global, JSContext* cx,
+  static void SetPrivacyClearance(const GlobalObject& global, JSContext* cx,
                                   mozilla::dom::Label& aLabel,
                                   ErrorResult& aRv);
   static already_AddRefed<Label> GetPrivacyClearance(const GlobalObject& global,
                                                      JSContext* cx);
 
-  static bool SetTrustClearance(const GlobalObject& global, JSContext* cx,
+  static void SetTrustClearance(const GlobalObject& global, JSContext* cx,
                                 mozilla::dom::Label& aLabel, ErrorResult& aRv);
   static already_AddRefed<Label> GetTrustClearance(const GlobalObject& global,
                                                    JSContext* cx);

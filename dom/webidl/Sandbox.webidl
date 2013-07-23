@@ -40,34 +40,40 @@ interface Sandbox {
 
   // Enable sandbox for compartment, if not enabled.
   static void enableSandbox();
+
+
   // Check if current compartment is sandboxed
   static boolean isSandboxed();
   static boolean isSandbox();
   static boolean isSandboxMode();
+
+  // Frozen sandbox labels cannto change
+  [Throws] static void freeze();
+  [Throws] static boolean isFrozen();
 
   // label
 
   // Get the underlying privacy label
   static Label? getPrivacyLabel();
   // Set the underlying privacy label, if it subsumes the existing one
-  [Throws] static boolean setPrivacyLabel(Label aLabel);
+  [Throws] static void setPrivacyLabel(Label aLabel);
 
   // Get the underlying trust label
   static Label? getTrustLabel();
   // Set the underlying trust label, if the existing one subsumes it
-  [Throws] static boolean setTrustLabel(Label aLabel);
+  [Throws] static void setTrustLabel(Label aLabel);
 
   // clearance
 
   // Get the underlying privacy clearance
   static Label? getPrivacyClearance();
   // Set the underlying trust clearance, if the existing one subsumes it
-  [Throws] static boolean setPrivacyClearance(Label aLabel);
+  [Throws] static void setPrivacyClearance(Label aLabel);
 
   // Get the underlying trust clearance
   static Label? getTrustClearance();
   // Set the underlying privacy clearance, if it subsumes the existing one
-  [Throws] static boolean setTrustClearance(Label aLabel);
+  [Throws] static void setTrustClearance(Label aLabel);
 
   // Get the compartment principal
   static DOMString getPrincipal();
@@ -81,7 +87,7 @@ interface Sandbox {
 
   // privileges
 
-  // Get the underlying trust label
+  // Get the underlying privileges
   static Label? getPrivileges();
 
   // Static ==================================================================

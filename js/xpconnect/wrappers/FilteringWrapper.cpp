@@ -199,6 +199,7 @@ FilteringWrapper<Base, Policy>::enter(JSContext *cx, HandleObject wrapper,
 #define GO FilteringWrapper<CrossCompartmentSecurityWrapper, GentlyOpaque>
 #define GO FilteringWrapper<CrossCompartmentSecurityWrapper, GentlyOpaque>
 #define CSO FilteringWrapper<CrossCompartmentSecurityWrapper, SandboxPolicy>
+#define XSO FilteringWrapper<SecurityXrayXPCWN, SandboxPolicy>
 template<> SCSOW SCSOW::singleton(0);
 template<> XOW XOW::singleton(0);
 template<> DXOW DXOW::singleton(0);
@@ -208,7 +209,9 @@ template<> CW CW::singleton(0);
 template<> XCW XCW::singleton(0);
 
 template<> GO GO::singleton(0);
+
 template<> CSO CSO::singleton(0);
+template<> XSO XSO::singleton(0);
 
 template class XOW;
 template class DXOW;
