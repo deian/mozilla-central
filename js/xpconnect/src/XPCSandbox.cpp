@@ -473,21 +473,36 @@ GuardRead(JSCompartment *compartment,
 NS_EXPORT_(bool)
 GuardRead(JSCompartment *compartment, JSCompartment *source, bool isRead)
 {
+  //isRead = true:  compartment is reading from source
+  //isRead = false: source is writing to compartment
 
 
   //No information exchange between a non-sandboxed and sandboxed compartment
-  if (!xpc::sandbox::IsCompartmentSandboxed(source))
+  if (!sandbox::IsCompartmentSandboxed(source))
     return false;
 
-  if (!xpc::sandbox::IsCompartmentSandboxed(compartment))
-    xpc::sandbox::EnableCompartmentSandbox(compartment);
+  if (!sandbox::IsCompartmentSandboxed(compartment))
+    sandbox::EnableCompartmentSandbox(compartment);
 
-  bool sandbox = SANDBOX_CONFIG(source).isSandbox();
-  bool isFrozen = sandbox::IsCompartmentSandboxFrozen(source);
+  bool sandbox = sandbox::IsCompartmentSandbox(source);
+  bool compartmentIsSandbox = sandbox::IsCompartmentSandbox(compartment);
 
   // Must read from a sandbox or frozen sandbox-mode compartment
-  if (!sandbox && !isFrozen)
+  // (this way the label of source) is "static"
+  if (isRead && !(sandbox || 
+                  sandbox::IsCompartmentSandboxFrozen(source) ||
+                  compartmentIsSandbox)) {
+    printf("Guard A\n");
     return false;
+  }
+
+  // Can only write to a frozen sandbox-mode compartment or sandbox
+  if (!isRead && 
+      !(compartmentIsSandbox || 
+        sandbox::IsCompartmentSandboxFrozen(compartment))) {
+    printf("Guard B\n");
+    return false;
+  }
   
   // When reading from sandbox, use the sandbox label, which is the
   // clearance.

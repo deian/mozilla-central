@@ -468,6 +468,7 @@ ComponentsObjectPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, W
 bool
 SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::Action act)
 {
+
     printf("*** SandboxPolicy::check ");
     switch (act) {
         case Wrapper::SET:  printf("SET "); break;
@@ -501,10 +502,6 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         }
     }
 
-    if (act == Wrapper::SET) {
-        NS_WARNING("SET is not allowed");
-        return false;
-    }
 
     RootedObject wrapper(cx, wrapperArg);
     RootedId id(cx, idArg);
@@ -522,6 +519,11 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         printf("\n");
     }
 
+    if (act == Wrapper::SET) {
+        NS_WARNING("SET is not allowed");
+        return false;
+    }
+
     bool isPostMessage = false;
     {
         const char *name;
@@ -537,8 +539,6 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
             isPostMessage = IsPostMessage(name,JSID_TO_FLAT_STRING(id));
     }
 
-    if (isPostMessage)
-       act = Wrapper::SET;
 
     // Information flows from the wrapped to the wrapper
     // The two are swapped for postMessage
@@ -561,23 +561,23 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         // Both compartments are content
 
         // Is this allowed by same origin policy? If not, do not allow it
-        /*
         if (!AccessCheck::isCrossOriginAccessPermitted(cx, wrapperArg, 
                                                        idArg, act)) {
             printf("B\n");
             return false;
         }
-        */
 
         // Cannot read from non-frozen sandbox-mode compartment
-        if (!sandbox::IsCompartmentSandboxFrozen(fromCompartment)) {
+        if (!isPostMessage &&
+            !sandbox::IsCompartmentSandboxFrozen(fromCompartment)) {
             printf("C\n");
             return false;
         }
     } 
     printf("D\n");
+
     bool res = xpc::sandbox::GuardRead(toCompartment, fromCompartment,
-                                       !(act == Wrapper::SET));
+                                       !isPostMessage /* rev to/from */);
     printf("isPostMessage = %d\n", isPostMessage);
     printf("GuardRead = %d\n", res);
 
