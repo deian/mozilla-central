@@ -14,6 +14,7 @@ interface Sandbox {
 
   // Schedule code in the sandbox
   [Throws] void schedule(DOMString src);
+  [Throws] void scheduleURI(DOMString aURL);
 
   // Sandbox privacy and trust labels
   [Pure] readonly attribute Label privacy;

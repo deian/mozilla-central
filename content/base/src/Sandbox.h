@@ -97,6 +97,7 @@ public: // DOM interface =====================================================
                                                ErrorResult& aRv);
 
   void Schedule(JSContext* cx, const nsAString& src, ErrorResult& aRv);
+  void ScheduleURI(JSContext* cx, const nsAString& aURL, ErrorResult& aRv);
 
   already_AddRefed<Label> Privacy() const;
   already_AddRefed<Label> Trust() const;

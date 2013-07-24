@@ -14,6 +14,8 @@
 #include "xpcprivate.h"
 #include "xpccomponents.h"
 #include "mozilla/dom/StructuredCloneUtils.h"
+#include "nsIXMLHttpRequest.h"
+#include "nsXMLHttpRequest.h"
 
 namespace mozilla {
 namespace dom {
@@ -283,6 +285,104 @@ Sandbox::Schedule(JSContext* cx, const nsAString& src, ErrorResult& aRv)
   EvalInSandbox(cx, src,aRv);
 }
 
+#define JSERR_ENSURE_SUCCESS(rv, msg)   \
+  if (NS_FAILED((rv))) {                \
+    JSErrorResult(cx, aRv, (msg));      \
+    return;                             \
+  }
+
+// TODO: make async
+void
+Sandbox::ScheduleURI(JSContext* cx, const nsAString& aURL, ErrorResult& aRv)
+{
+  aRv.MightThrowJSException();
+  nsresult rv;
+
+  nsCOMPtr<nsIPrincipal> urlPrincipal;
+  {
+
+    JSCompartment *compartment = js::GetContextCompartment(cx);
+    MOZ_ASSERT(compartment);
+
+    // Check that the compartment label+privs [= uri
+    nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
+    if (!privs) 
+      privs = new Label();
+
+    nsRefPtr<Label> currentLabel =
+      xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
+    if (!currentLabel) {
+      JSErrorResult(cx, aRv, "Failed to get current privacy label.");
+      return;
+    }
+
+    // Create URI corresponding to aURL
+    nsCOMPtr<nsIURI> uri;
+    rv = NS_NewURI(getter_AddRefs(uri), aURL);
+    JSERR_ENSURE_SUCCESS(rv, "Couldn't create nsIURI instance from URL");
+
+    bool ishttp=false, ishttps=false;
+    uri->SchemeIs("http",&ishttp);
+    uri->SchemeIs("https",&ishttps);
+    if (!ishttp && !ishttps) {
+      JSErrorResult(cx, aRv, "Scheme must be http or https.");
+      return;
+    }
+
+    nsCOMPtr<nsIScriptSecurityManager> secMan =
+      nsContentUtils::GetSecurityManager();
+    JSERR_ENSURE_SUCCESS(rv, "Couldn't get script security manager.");
+
+    rv = secMan->GetNoAppCodebasePrincipal(uri, getter_AddRefs(urlPrincipal));
+    JSERR_ENSURE_SUCCESS(rv, "Couldn't make principal from URL.");
+
+    nsRefPtr<Role> urlRole = new Role(aURL, aRv);
+    if (aRv.Failed()) return;
+    nsRefPtr<Label> urlLabel = new Label(*urlRole, aRv);
+    if (aRv.Failed()) return;
+
+    // this is privacy so the [= corresponds to <=
+    if (!urlLabel->Subsumes(*privs, *currentLabel)) {
+      JSErrorResult(cx, aRv, "Fetching script would leak information.");
+      return;
+    }
+
+
+  }
+
+  nsAutoString src;
+  { // Get script from URL
+    // TODO: do it async
+    nsCOMPtr<nsIXMLHttpRequest> xhr =
+      do_CreateInstance(NS_XMLHTTPREQUEST_CONTRACTID, &rv);
+    JSERR_ENSURE_SUCCESS(rv, "Couldn't create nsIXMLHttpRequest instance");
+
+    static_cast<nsXMLHttpRequest*>(xhr.get())->SetParameters(/*aAnon=*/true,
+                                                             /*aSystem=*/false);
+
+    NS_NAMED_LITERAL_CSTRING(getString, "GET");
+    const nsAString& empty = EmptyString();
+
+
+    rv = xhr->Init(urlPrincipal, nullptr, nullptr, nullptr);
+    JSERR_ENSURE_SUCCESS(rv, "Couldn't initialize the XHR");
+
+    rv = xhr->Open(getString, NS_ConvertUTF16toUTF8(aURL),
+        false, empty, empty);
+    JSERR_ENSURE_SUCCESS(rv, "OpenRequest failed");
+
+    rv = xhr->Send(nullptr);
+    JSERR_ENSURE_SUCCESS(rv, "Send failed");
+
+    rv = xhr->GetResponseText(src);
+    JSERR_ENSURE_SUCCESS(rv, "GetResponse failed");
+  }
+
+  Schedule(cx, src, aRv);
+
+}
+#undef JSERR_ENSURE_SUCCESS
+
 
 bool
 Sandbox::IsClean() const
@@ -298,6 +398,7 @@ Sandbox::Ondone(JSContext* cx, EventHandlerNonNull* successHandler,
   aRv.MightThrowJSException();
 
   JSCompartment *compartment = js::GetContextCompartment(cx);
+  MOZ_ASSERT(compartment);
 
 
   if (MOZ_UNLIKELY(!xpc::sandbox::IsCompartmentSandboxed(compartment)))
@@ -437,6 +538,7 @@ Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
 void 
 Sandbox::Grant(mozilla::dom::FreshPrincipal& principal)
 {
+  //TODO implement this
   // get sandbox compartment
   //Own(glob, principal);
 }
