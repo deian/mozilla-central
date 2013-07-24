@@ -513,12 +513,13 @@ GetCompartmentSandbox(JSCompartment *compartment);
 
 // Can information flow form source to compartment
 NS_EXPORT_(bool)
-GuardRead(JSCompartment *compartment, JSCompartment *source);
+GuardRead(JSCompartment *compartment, JSCompartment *source, bool isRead = true);
 
 // Can information flow to compartment from object labeld with privacy and trust
 NS_EXPORT_(bool)
 GuardRead(JSCompartment *compatment,
-          mozilla::dom::Label &privacy, mozilla::dom::Label &trust);
+          mozilla::dom::Label &privacy, mozilla::dom::Label &trust,
+          mozilla::dom::Label *aPrivs = nullptr);
 
 } // namespace sandbox
 } // namespace xpc

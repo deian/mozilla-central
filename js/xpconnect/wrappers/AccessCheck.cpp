@@ -177,6 +177,22 @@ IsPermitted(const char *name, JSFlatString *prop, bool set)
     return false;
 }
 
+static bool
+IsPostMessage(const char *name, JSFlatString *prop)
+{
+    size_t propLength;
+    const jschar *propChars =
+        JS_GetInternedStringCharsAndLength(JS_FORGET_STRING_FLATNESS(prop), &propLength);
+    if (!propLength)
+        return false;
+    bool set = false;
+    switch (name[0]) {
+        NAME('W', "Window",
+             PROP('p', R("postMessage")))
+    }
+    return false;
+}
+
 #undef NAME
 #undef RW
 #undef R
@@ -506,14 +522,36 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         printf("\n");
     }
 
-    // Information flows from the wrapped to the wrapper
-    JSCompartment *fromCompartment = js::GetObjectCompartment(wrapped),
-                  *toCompartment   = js::GetObjectCompartment(wrapper);
+    bool isPostMessage = false;
+    {
+        const char *name;
+        js::Class *clasp = js::GetObjectClass(wrapped);
+        NS_ASSERTION(Jsvalify(clasp) != &XrayUtils::HolderClass, 
+                     "shouldn't have a holder here");
+        if (clasp->ext.innerObject)
+            name = "Window";
+        else
+            name = clasp->name;
 
-    // Do not handle the case where one of the compartments is not a sandbox/sandbox-mode
-    // TODO: maybe allow the case where the fromCompartment is not sandboxed
-    if (!sandbox::IsCompartmentSandboxed(toCompartment) ||
-        !sandbox::IsCompartmentSandboxed(fromCompartment)) {
+        if (JSID_IS_STRING(id))
+            isPostMessage = IsPostMessage(name,JSID_TO_FLAT_STRING(id));
+    }
+
+    if (isPostMessage)
+       act = Wrapper::SET;
+
+    // Information flows from the wrapped to the wrapper
+    // The two are swapped for postMessage
+    JSCompartment *fromCompartment = isPostMessage 
+                                     ? js::GetObjectCompartment(wrapper)
+                                     : js::GetObjectCompartment(wrapped),
+                  *toCompartment   = isPostMessage 
+                                     ? js::GetObjectCompartment(wrapped)
+                                     : js::GetObjectCompartment(wrapper);
+
+    // Do not handle the case where the fromCompartment is 
+    // not a sandbox/sandbox-mode TODO:
+    if (!sandbox::IsCompartmentSandboxed(fromCompartment)) {
         printf("A\n");
         return false;
     }
@@ -523,11 +561,13 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         // Both compartments are content
 
         // Is this allowed by same origin policy? If not, do not allow it
+        /*
         if (!AccessCheck::isCrossOriginAccessPermitted(cx, wrapperArg, 
                                                        idArg, act)) {
             printf("B\n");
             return false;
         }
+        */
 
         // Cannot read from non-frozen sandbox-mode compartment
         if (!sandbox::IsCompartmentSandboxFrozen(fromCompartment)) {
@@ -536,7 +576,12 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         }
     } 
     printf("D\n");
-    return xpc::sandbox::GuardRead(toCompartment, fromCompartment);
+    bool res = xpc::sandbox::GuardRead(toCompartment, fromCompartment,
+                                       !(act == Wrapper::SET));
+    printf("isPostMessage = %d\n", isPostMessage);
+    printf("GuardRead = %d\n", res);
+
+    return res;
 }
 
 bool

@@ -381,16 +381,35 @@ GetCompartmentSandbox(JSCompartment *compartment)
 // compartment trust label.
 NS_EXPORT_(bool)
 GuardRead(JSCompartment *compartment,
-          mozilla::dom::Label &privacy, mozilla::dom::Label &trust)
+          mozilla::dom::Label &privacy, mozilla::dom::Label &trust,
+          mozilla::dom::Label *aPrivs)
 {
   ErrorResult aRv;
 
-  nsRefPtr<Label> privs = GetCompartmentPrivileges(compartment);
+  nsRefPtr<Label> privs = aPrivs ? aPrivs : new Label();
 
   nsRefPtr<mozilla::dom::Label> compPrivacy =
     xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
   nsRefPtr<mozilla::dom::Label> compTrust =
     xpc::sandbox::GetCompartmentTrustLabel(compartment);
+
+  {
+    nsAutoString pstr, tstr;
+    privacy.Stringify(pstr); trust.Stringify(tstr);
+    printf("*** src: %s %%%% %s\n", NS_LossyConvertUTF16toASCII(pstr).get()
+                                  , NS_LossyConvertUTF16toASCII(tstr).get());
+  }
+  {
+    nsAutoString pstr, tstr;
+    compPrivacy->Stringify(pstr); compTrust->Stringify(tstr);
+    printf("*** dst: %s %%%% %s\n", NS_LossyConvertUTF16toASCII(pstr).get()
+                                  , NS_LossyConvertUTF16toASCII(tstr).get());
+  }
+  {
+    nsAutoString pstr, tstr;
+    privs->Stringify(pstr);
+    printf("*** pvs: %s\n", NS_LossyConvertUTF16toASCII(pstr).get());
+  }
 
 
   // If any of the labels are missing, don't allow the information flow
@@ -452,7 +471,7 @@ GuardRead(JSCompartment *compartment,
 // For this to be safe we must not allow a compartment to read the
 // label of a non-sandbox, i.e., sandbox-mode, compartment.
 NS_EXPORT_(bool)
-GuardRead(JSCompartment *compartment, JSCompartment *source)
+GuardRead(JSCompartment *compartment, JSCompartment *source, bool isRead)
 {
 
 
@@ -464,6 +483,11 @@ GuardRead(JSCompartment *compartment, JSCompartment *source)
     xpc::sandbox::EnableCompartmentSandbox(compartment);
 
   bool sandbox = SANDBOX_CONFIG(source).isSandbox();
+  bool isFrozen = sandbox::IsCompartmentSandboxFrozen(source);
+
+  // Must read from a sandbox or frozen sandbox-mode compartment
+  if (!sandbox && !isFrozen)
+    return false;
   
   // When reading from sandbox, use the sandbox label, which is the
   // clearance.
@@ -476,7 +500,11 @@ GuardRead(JSCompartment *compartment, JSCompartment *source)
 
   if (!privacy || !trust) return false;
 
-  return GuardRead(compartment, *privacy, *trust);
+  nsRefPtr<Label> privs = isRead ?
+                          GetCompartmentPrivileges(compartment):
+                          GetCompartmentPrivileges(source);
+
+  return GuardRead(compartment, *privacy, *trust, privs);
 }
 
 #undef SANDBOX_CONFIG
