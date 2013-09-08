@@ -27,6 +27,14 @@ namespace dom {
 static JSObject* getGlobalJSObject(const GlobalObject& global);
 //Helper for setting the ErrorResult to a string
 static void JSErrorResult(JSContext *cx, ErrorResult& aRv, const char *msg);
+// Helper for adding fresh principal to privilege ownership list of
+// compartment
+static void own(JSCompartment *, mozilla::dom::FreshPrincipal& );
+// Helper for fetching a script from a url; guarding such that the
+// fetch does not leak information
+static void
+GetSourceFromURI(JSContext* cx, const nsAString& aURL, 
+                 nsAString& src, ErrorResult& aRv);
 
 ////////////////////////////////
 
@@ -293,7 +301,8 @@ Sandbox::Schedule(JSContext* cx, const nsAString& src, ErrorResult& aRv)
 
 // TODO: make async
 void
-Sandbox::ScheduleURI(JSContext* cx, const nsAString& aURL, ErrorResult& aRv)
+GetSourceFromURI(JSContext* cx, const nsAString& aURL, 
+                 nsAString& src, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
   nsresult rv;
@@ -350,7 +359,6 @@ Sandbox::ScheduleURI(JSContext* cx, const nsAString& aURL, ErrorResult& aRv)
 
   }
 
-  nsAutoString src;
   { // Get script from URL
     // TODO: do it async
     nsCOMPtr<nsIXMLHttpRequest> xhr =
@@ -378,7 +386,15 @@ Sandbox::ScheduleURI(JSContext* cx, const nsAString& aURL, ErrorResult& aRv)
     JSERR_ENSURE_SUCCESS(rv, "GetResponse failed");
   }
 
-  Schedule(cx, src, aRv);
+}
+void
+Sandbox::ScheduleURI(JSContext* cx, const nsAString& aURL, ErrorResult& aRv)
+{
+  nsAutoString src;
+  GetSourceFromURI(cx, aURL, src, aRv);
+
+  if (!aRv.Failed())
+    Schedule(cx, src, aRv);
 
 }
 #undef JSERR_ENSURE_SUCCESS
@@ -536,13 +552,12 @@ Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
   return mResult;
 }
 void 
-Sandbox::Grant(mozilla::dom::FreshPrincipal& principal)
+Sandbox::Grant(JSContext* cx, mozilla::dom::FreshPrincipal& principal)
 {
-  //TODO implement this
-  // get sandbox compartment
-  //Own(glob, principal);
+  JSCompartment* compartment = js::GetContextCompartment(cx);
+  MOZ_ASSERT(compartment);
+  own(compartment, principal);
 }
-
 
 inline void
 Sandbox::SetResult(JS::Handle<JS::Value> val, ResultType type)
@@ -625,34 +640,6 @@ Sandbox::IsSandboxMode(const GlobalObject& global)
   return xpc::sandbox::IsCompartmentSandboxMode(compartment);
 }
 
-void 
-Sandbox::Freeze(const GlobalObject& global, /*JSContext* cx,*/ ErrorResult& aRv)
-{
-  //aRv.MightThrowJSException();
-  if (!IsSandboxMode(global)) {
-    //JSErrorResult(cx, aRv, "Only sandbox-mode can be frozen.");
-    aRv.Throw(NS_ERROR_FAILURE);
-    return;
-  }
-  JSCompartment *compartment =
-    js::GetObjectCompartment(getGlobalJSObject(global));
-  xpc::sandbox::FreezeCompartmentSandbox(compartment);
-}
-
-bool 
-Sandbox::IsFrozen(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
-{
-  aRv.MightThrowJSException();
-  if (!IsSandboxMode(global)) {
-    JSErrorResult(cx, aRv, "Only sandbox-mode can be frozen.");
-    return false;
-  }
-
-  JSCompartment *compartment =
-    js::GetObjectCompartment(getGlobalJSObject(global));
-  return xpc::sandbox::IsCompartmentSandboxFrozen(compartment);
-}
-
 // label
 
 void
@@ -660,12 +647,6 @@ Sandbox::SetPrivacyLabel(const GlobalObject& global, JSContext* cx,
                          mozilla::dom::Label& aLabel, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
-
-  if (IsFrozen(global, cx, aRv)) {
-    JSErrorResult(cx, aRv, 
-                  "Cannot set label for a frozen sandboxed compartment.");
-    return;
-  }
 
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
@@ -715,12 +696,6 @@ Sandbox::SetTrustLabel(const GlobalObject& global, JSContext* cx,
 {
   aRv.MightThrowJSException();
 
-  if (IsFrozen(global, cx, aRv)) {
-    JSErrorResult(cx, aRv, 
-                  "Cannot set label for a frozen sandboxed compartment.");
-    return;
-  }
-
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
 
@@ -759,12 +734,6 @@ Sandbox::SetPrivacyClearance(const GlobalObject& global, JSContext* cx,
                              mozilla::dom::Label& aLabel, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
-
-  if (IsFrozen(global, cx, aRv)) {
-    JSErrorResult(cx, aRv, 
-                  "Cannot set clearance for a frozen sandboxed compartment.");
-    return;
-  }
 
   if (!IsSandboxMode(global)) {
     JSErrorResult(cx, aRv, 
@@ -808,12 +777,6 @@ Sandbox::SetTrustClearance(const GlobalObject& global, JSContext* cx,
                            mozilla::dom::Label& aLabel, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
-
-  if (IsFrozen(global, cx, aRv)) {
-    JSErrorResult(cx, aRv, 
-                  "Cannot set clearance for a frozen sandboxed compartment.");
-    return;
-  }
 
   if (!IsSandboxMode(global)) {
     JSErrorResult(cx, aRv,
@@ -1017,6 +980,15 @@ Sandbox::GetPrincipal(const GlobalObject& global, nsString& retval)
   NS_Free(origin);
 }
 
+//helper function
+static void
+own(JSCompartment *compartment, mozilla::dom::FreshPrincipal& principal) {
+  nsCOMPtr<nsIPrincipal> p = principal.Principal();
+  nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
+  mozilla::ErrorResult  aRv;
+  privs->_And(p, aRv);
+}
+
 void
 Sandbox::Own(const GlobalObject& global,
              mozilla::dom::FreshPrincipal& principal)
@@ -1026,12 +998,23 @@ Sandbox::Own(const GlobalObject& global,
     js::GetObjectCompartment(getGlobalJSObject(global));
 
   MOZ_ASSERT(compartment);
+  own(compartment, principal);
+}
 
+JS::Value
+Import(const GlobalObject& global, JSContext* cx,
+       const nsAString& aURL, ErrorResult& aRv)
+{
+  nsAutoString src;
+  JS::RootedValue v(cx, JS::UndefinedValue());
 
-  nsCOMPtr<nsIPrincipal> p = principal.Principal();
-  nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
-  mozilla::ErrorResult  aRv;
-  privs->_And(p, aRv);
+  GetSourceFromURI(cx, aURL, src, aRv);
+  if (aRv.Failed())
+    return v;
+
+  //TODO: evaluate the src
+
+  return v;
 }
 
 // Internal ==================================================================
@@ -1108,49 +1091,43 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
 
   nsCOMPtr<nsIPrincipal> principal = mPrivacy->GetPrincipalIfSingleton();
 
+  // We export the XHR constructor in every case, but CSP only
+  // allows 'self' when the privacy label corresponds to the
+  // singleton-principal, and '*' when the label is public. 
+  // This depends on bug 886164
+
   if (principal) {
-    bool isNull;
-    rv = principal->GetIsNullPrincipal(&isNull);
-    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-
-    if (isNull) {
-      //TODO: once null principals can have csp we need to change this
-      //to export XHR constructor
-      mPrincipal = principal;
-    } else {
-      // "clone" the principal
-      nsCOMPtr<nsIURI> uri;
-      rv = principal->GetURI(getter_AddRefs(uri));
-      if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-
-      nsCOMPtr<nsIScriptSecurityManager> secMan =
-        nsContentUtils::GetSecurityManager();
-      if(!secMan) { aRv.Throw(NS_ERROR_FAILURE); return; }
-      rv = secMan->GetNoAppCodebasePrincipal(uri, getter_AddRefs(mPrincipal));
-
-      if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-
-      nsCOMPtr<nsIContentSecurityPolicy> csp =
-        do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
-
-      if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-
-      if (csp) {
-        nsString policy = NS_LITERAL_STRING("default-src 'none'; \
-                                             connect-src 'self';");
-        csp->RefinePolicy(policy, uri, true);
-        rv = mPrincipal->SetCsp(csp);
-        if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
-        options.wantXHRConstructor = true;
-      }
-    }
+    // Just use principal in label. We don't need
+    // to clone it since we do this when we create labels.
+    mPrincipal = principal;
   } else {
-    //TODO: once null principals can have csp we need to change this
-    //to export XHR constructor
     mPrincipal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
     if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
   }
 
+  nsString policy;
+  if (mPrivacy->IsEmpty()) { // case 1: public label:
+    policy = NS_LITERAL_STRING("default-src *");
+  } else if (!principal) {   // case 2: conjunctive label:
+    policy = NS_LITERAL_STRING("default-src 'none';");
+  } else {                   // case 3: singleton label:
+    policy = NS_LITERAL_STRING("default-src 'none'; \
+                                connect-src 'self';");
+  }
+
+  { //set csp policy on principal
+    nsCOMPtr<nsIContentSecurityPolicy> csp =
+      do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
+    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+
+    nsCOMPtr<nsIURI> uri;
+    rv = mPrincipal->GetURI(getter_AddRefs(uri));
+    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+
+    csp->RefinePolicy(policy, uri, true);
+    rv = mPrincipal->SetCsp(csp);
+    if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
+  }
 
   // Create sandbox object
 
@@ -1173,6 +1150,7 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
   
 
   {
+    // hang things to the sandbox global:
     JS::RootedObject sandboxObj(cx, js::UncheckedUnwrap(mSandboxObj));
     JSAutoRequest req(cx);
     JSAutoCompartment ac(cx, sandboxObj);

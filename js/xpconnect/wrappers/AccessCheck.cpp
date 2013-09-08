@@ -51,18 +51,7 @@ AccessCheck::subsumes(JSCompartment *a, JSCompartment *b)
     {
         char *aorigin = NULL, *borigin = NULL;
         aprin->GetOrigin(&aorigin); bprin->GetOrigin(&borigin);
-        printf("%s subsumes %s ?\n",aorigin,borigin);
         NS_Free(aorigin); NS_Free(borigin);
-    }
-
-    // If either compartment is sandboxed and neither are chrome
-    // use the sandbox policy
-    if (MOZ_UNLIKELY(!nsContentUtils::IsSystemPrincipal(aprin) &&
-                     !nsContentUtils::IsSystemPrincipal(bprin) &&
-                     (sandbox::IsCompartmentSandboxed(a) ||
-                      sandbox::IsCompartmentSandboxed(b))
-                    )) {
-//        return SandboxPolicy::subsumes(a, b);
     }
 
     bool subsumes;
@@ -468,56 +457,9 @@ ComponentsObjectPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, W
 bool
 SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::Action act)
 {
-
-    printf("*** SandboxPolicy::check ");
-    switch (act) {
-        case Wrapper::SET:  printf("SET "); break;
-        case Wrapper::GET:  printf("GET "); break;
-        case Wrapper::CALL: printf("CALL "); break;
-        default:            printf("UNKNOWN ");
-    }
-
-    {
-        RootedObject wrapper(cx, wrapperArg);
-        RootedObject obj(cx, Wrapper::wrappedObject(wrapper));
-        js::Class *clasp = js::GetObjectClass(obj);
-        const char *name;
-        NS_ASSERTION(Jsvalify(clasp) != &XrayUtils::HolderClass, "shouldn't have a holder here");
-        if (clasp->ext.innerObject)
-            name = "Window";
-        else
-            name = clasp->name;
-        
-        printf("%s ", name);
-
-        RootedId id(cx, idArg);
-        if (JSID_IS_STRING(id)) {
-            JSString *str = JSID_TO_STRING(id);
-            size_t nameLength;
-            const jschar *chars = JS_GetStringCharsAndLength(cx, str, &nameLength);
-            for(int i =0;i <nameLength;++i) {
-                printf("%c",chars[i]);
-            }
-            printf(" ");
-        }
-    }
-
-
     RootedObject wrapper(cx, wrapperArg);
     RootedId id(cx, idArg);
     RootedObject wrapped(cx, Wrapper::wrappedObject(wrapper));
-
-    {
-        nsIPrincipal *aprin = 
-            GetCompartmentPrincipal(js::GetObjectCompartment(wrapped));
-        nsIPrincipal *bprin = 
-            GetCompartmentPrincipal(js::GetObjectCompartment(wrapper));
-        char *aorigin = NULL, *borigin = NULL;
-        aprin->GetOrigin(&aorigin); bprin->GetOrigin(&borigin);
-        printf("wrapped (from) = %s; wrapper (to) =%s ?\n",aorigin,borigin);
-        NS_Free(aorigin); NS_Free(borigin);
-        printf("\n");
-    }
 
     if (act == Wrapper::SET) {
         NS_WARNING("SET is not allowed");
@@ -563,37 +505,14 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         // Is this allowed by same origin policy? If not, do not allow it
         if (!AccessCheck::isCrossOriginAccessPermitted(cx, wrapperArg, 
                                                        idArg, act)) {
-            printf("B\n");
-            return false;
-        }
-
-        // Cannot read from non-frozen sandbox-mode compartment
-        if (!isPostMessage &&
-            !sandbox::IsCompartmentSandboxFrozen(fromCompartment)) {
-            printf("C\n");
             return false;
         }
     } 
-    printf("D\n");
 
     bool res = xpc::sandbox::GuardRead(toCompartment, fromCompartment,
                                        !isPostMessage /* rev to/from */);
-    printf("isPostMessage = %d\n", isPostMessage);
-    printf("GuardRead = %d\n", res);
 
     return res;
-}
-
-bool
-SandboxPolicy::subsumes(JSCompartment *a, JSCompartment *b)
-{
-    return true;
-    /*
-    nsIPrincipal *aprin = GetCompartmentPrincipal(a);
-    nsIPrincipal *bprin = GetCompartmentPrincipal(b);
-
-    if (MOZ_UNLIKELY((!aprin || !bprin)) return true;
-    */
 }
 
 } // xpc

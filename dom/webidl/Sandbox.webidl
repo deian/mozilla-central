@@ -42,15 +42,10 @@ interface Sandbox {
   // Enable sandbox for compartment, if not enabled.
   static void enableSandbox();
 
-
   // Check if current compartment is sandboxed
   static boolean isSandboxed();
   static boolean isSandbox();
   static boolean isSandboxMode();
-
-  // Frozen sandbox labels cannto change
-  [Throws] static void freeze();
-  [Throws] static boolean isFrozen();
 
   // label
 
@@ -76,20 +71,21 @@ interface Sandbox {
   // Set the underlying privacy clearance, if it subsumes the existing one
   [Throws] static void setTrustClearance(Label aLabel);
 
-  // Get the compartment principal
+  // privileges
+
+  // Get the compartment principal, stringified
   static DOMString getPrincipal();
 
   // Add principal to ownership list
   static void own(FreshPrincipal principal);
 
-
-  // Get principals owned by compartment
-  //sequence<Principal> getOwnedFreshPrincipals();
-
-  // privileges
-
   // Get the underlying privileges
   static Label? getPrivileges();
+
+  // misc
+
+  // Eval code from a specific URL
+  [Throws] static any import(DOMString aURL);
 
   // Static ==================================================================
 

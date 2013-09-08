@@ -123,7 +123,7 @@ public: // DOM interface =====================================================
   }
   JS::Value GetResult(JSContext* cx, ErrorResult& aRv);
 
-  void Grant(mozilla::dom::FreshPrincipal& principal);
+  void Grant(JSContext* cx, mozilla::dom::FreshPrincipal& principal);
 public: 
   // C++ only
   // FIXME: these should not really be public
@@ -142,9 +142,6 @@ public: // Static DOM interface ==============================================
   static bool IsSandboxed(const GlobalObject& global);
   static bool IsSandbox(const GlobalObject& global);
   static bool IsSandboxMode(const GlobalObject& global);
-
-  static void Freeze(const GlobalObject& global, /*JSContext* cx,*/ ErrorResult& aRv);
-  static bool IsFrozen(const GlobalObject& global, JSContext* cx, ErrorResult& aRv);
 
   // label
 
@@ -171,6 +168,11 @@ public: // Static DOM interface ==============================================
   static already_AddRefed<Label> GetTrustClearance(const GlobalObject& global,
                                                    JSContext* cx);
 
+  // privs
+
+  // Get underlying pricipal
+  static void GetPrincipal(const GlobalObject& global, nsString& retval); 
+
   // Ownership
   static already_AddRefed<Label> GetPrivileges(const GlobalObject& global);
 
@@ -178,8 +180,12 @@ public: // Static DOM interface ==============================================
   static void Own(const GlobalObject& global,
                   mozilla::dom::FreshPrincipal& principal);
 
-  // Get underlying pricipal
-  static void GetPrincipal(const GlobalObject& global, nsString& retval); 
+
+  //misc
+
+  // Import script from specified url
+  static JS::Value Import(const GlobalObject& global, JSContext* cx,
+                          const nsAString& aURL, ErrorResult& aRv);
 
 public: // TODO REMOVE =======================================================
   JSObject* GetSandbox(JSContext* cx) const { return mSandboxObj; }

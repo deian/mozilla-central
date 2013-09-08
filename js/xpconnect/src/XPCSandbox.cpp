@@ -119,13 +119,6 @@ FreezeCompartmentSandbox(JSCompartment *compartment)
   return SANDBOX_CONFIG(compartment).Freeze();
 }
 
-NS_EXPORT_(bool)
-IsCompartmentSandboxFrozen(JSCompartment *compartment)
-{
-  MOZ_ASSERT(compartment);
-  return SANDBOX_CONFIG(compartment).isFrozen();
-}
-
 // This function adjusts the "security permieter".
 // Specifically, it adjusts:
 // 1. The CSP policy to restrict with whom the current compartment may
@@ -214,8 +207,8 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
            + NS_LITERAL_STRING(";");
 
     //XXX why was I getting the uri of the first principal??
-    rv = labelPrincipals->ElementAt(0)->GetURI(getter_AddRefs(uri));
-    MOZ_ASSERT(NS_SUCCEEDED(rv));
+    //rv = labelPrincipals->ElementAt(0)->GetURI(getter_AddRefs(uri));
+    //MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   } else {
     // Case 3: not the empty label or singleton disjunctive role
@@ -393,25 +386,6 @@ GuardRead(JSCompartment *compartment,
   nsRefPtr<mozilla::dom::Label> compTrust =
     xpc::sandbox::GetCompartmentTrustLabel(compartment);
 
-  {
-    nsAutoString pstr, tstr;
-    privacy.Stringify(pstr); trust.Stringify(tstr);
-    printf("*** src: %s %%%% %s\n", NS_LossyConvertUTF16toASCII(pstr).get()
-                                  , NS_LossyConvertUTF16toASCII(tstr).get());
-  }
-  {
-    nsAutoString pstr, tstr;
-    compPrivacy->Stringify(pstr); compTrust->Stringify(tstr);
-    printf("*** dst: %s %%%% %s\n", NS_LossyConvertUTF16toASCII(pstr).get()
-                                  , NS_LossyConvertUTF16toASCII(tstr).get());
-  }
-  {
-    nsAutoString pstr, tstr;
-    privs->Stringify(pstr);
-    printf("*** pvs: %s\n", NS_LossyConvertUTF16toASCII(pstr).get());
-  }
-
-
   // If any of the labels are missing, don't allow the information flow
   if (!compPrivacy || !compTrust)
     return false;
@@ -424,10 +398,6 @@ GuardRead(JSCompartment *compartment,
 
   // Compartment cannot directly read data, see if we can taint be to
   // allow it to read.
-
-  // Compartment is frozen, cannot raise label
-  if (xpc::sandbox::IsCompartmentSandboxFrozen(compartment))
-    return false;
 
   nsRefPtr<mozilla::dom::Label> clrPrivacy =
     xpc::sandbox::GetCompartmentPrivacyClearance(compartment);
@@ -485,25 +455,7 @@ GuardRead(JSCompartment *compartment, JSCompartment *source, bool isRead)
     sandbox::EnableCompartmentSandbox(compartment);
 
   bool sandbox = sandbox::IsCompartmentSandbox(source);
-  bool compartmentIsSandbox = sandbox::IsCompartmentSandbox(compartment);
 
-  // Must read from a sandbox or frozen sandbox-mode compartment
-  // (this way the label of source) is "static"
-  if (isRead && !(sandbox || 
-                  sandbox::IsCompartmentSandboxFrozen(source) ||
-                  compartmentIsSandbox)) {
-    printf("Guard A\n");
-    return false;
-  }
-
-  // Can only write to a frozen sandbox-mode compartment or sandbox
-  if (!isRead && 
-      !(compartmentIsSandbox || 
-        sandbox::IsCompartmentSandboxFrozen(compartment))) {
-    printf("Guard B\n");
-    return false;
-  }
-  
   // When reading from sandbox, use the sandbox label, which is the
   // clearance.
   nsRefPtr<mozilla::dom::Label> privacy =
