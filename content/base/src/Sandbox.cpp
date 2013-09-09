@@ -842,7 +842,7 @@ Sandbox::GetPrivileges(const GlobalObject& global)
 
 // API exposed to Sandbox ====================================================
 
-static JSBool
+static bool
 SandboxDone(JSContext *cx, unsigned argc, jsval *vp)
 {
   JS::CallArgs args = CallArgsFromVp(argc, vp);
@@ -890,7 +890,7 @@ SandboxDone(JSContext *cx, unsigned argc, jsval *vp)
   return true;
 }
 
-static JSBool
+static bool
 SandboxOnmessage(JSContext *cx, unsigned argc, jsval *vp)
 {
   // in sandbox:
@@ -945,7 +945,7 @@ SandboxOnmessage(JSContext *cx, unsigned argc, jsval *vp)
   return true;
 }
 
-static JSBool
+static bool
 SandboxGetMessage(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
                   JS::MutableHandleValue vp)
 {
@@ -1032,7 +1032,7 @@ Sandbox::RaiseLabel()
 // This function tries to dispatch an event. It fails silently if it
 // can't dispatch an event due to the result not being set or the
 // handlers not being registered.
-JSBool
+bool
 Sandbox::DispatchResult(JSContext* cx)
 {
   // Only dispatch if result has been set

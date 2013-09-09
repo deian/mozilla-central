@@ -196,7 +196,7 @@ public: // Internal ==========================================================
   void RaiseLabel();
 
   // Call onmessage handler registered _on_ the sandbox
-  JSBool DispatchResult(JSContext* cx);
+  bool DispatchResult(JSContext* cx);
 
   // Set onmessage property _in_ the sandbox, this is called when the
   // owner posts a message _to_ the sandbox

@@ -3646,7 +3646,7 @@ public:
     NS_DECL_ISUPPORTS
 
 private:
-    static JSBool ContextHolderOperationCallback(JSContext *cx);
+    static bool ContextHolderOperationCallback(JSContext *cx);
 
     JSContext* mJSContext;
     JSContext* mOrigCx;
@@ -3666,7 +3666,7 @@ private:
 // and used.
 nsresult
 CreateSandboxObject(JSContext *cx, jsval *vp, nsISupports *prinOrSop,
-                    xpc::SandboxOptions& options);
+                    SandboxOptions& options);
 // Helper for evaluating scripts in a sandbox object created with
 // CreateSandboxObject(). The caller is responsible of ensuring
 // that *rval doesn't get collected during the call or usage after the

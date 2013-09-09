@@ -400,8 +400,12 @@ GetJunkScopeGlobal();
 void
 SystemErrorReporter(JSContext *cx, const char *message, JSErrorReport *rep);
 
+namespace mozilla {
+namespace dom {
 class Label;
 class Sandbox;
+} //dom
+} //mozilla
 
 // We have a separate version that's exported with external linkage for use by
 // xpcshell, since external linkage on windows changes the signature to make it

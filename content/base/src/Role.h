@@ -78,7 +78,7 @@ private:
     return &mPrincipals;
   }
 
-  friend class mozilla::dom::Label;
+  friend class Label;
 
 private:
   PrincipalArray mPrincipals;
