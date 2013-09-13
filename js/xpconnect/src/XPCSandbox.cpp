@@ -228,7 +228,7 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
   }
 
   // Refine policy
-  csp->RefinePolicy(policy, uri, true);
+  csp->AppendPolicy(policy, uri, false, true);
 
 
   if (disableStorage) {

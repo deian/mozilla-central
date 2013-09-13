@@ -48,12 +48,6 @@ AccessCheck::subsumes(JSCompartment *a, JSCompartment *b)
     if (!aprin || !bprin)
         return true;
 
-    {
-        char *aorigin = NULL, *borigin = NULL;
-        aprin->GetOrigin(&aorigin); bprin->GetOrigin(&borigin);
-        NS_Free(aorigin); NS_Free(borigin);
-    }
-
     bool subsumes;
     nsresult rv = aprin->Subsumes(bprin, &subsumes);
     NS_ENSURE_SUCCESS(rv, false);
@@ -469,7 +463,7 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
     bool isPostMessage = false;
     {
         const char *name;
-        js::Class *clasp = js::GetObjectClass(wrapped);
+        const js::Class *clasp = js::GetObjectClass(wrapped);
         NS_ASSERTION(Jsvalify(clasp) != &XrayUtils::HolderClass, 
                      "shouldn't have a holder here");
         if (clasp->ext.innerObject)
@@ -509,10 +503,10 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         }
     } 
 
-    bool res = xpc::sandbox::GuardRead(toCompartment, fromCompartment,
-                                       !isPostMessage /* rev to/from */);
+    bool res = sandbox::GuardRead(toCompartment, fromCompartment,
+                                  !isPostMessage /* rev to/from */);
 
     return res;
 }
 
-} // xpc
+} // namespace xpc

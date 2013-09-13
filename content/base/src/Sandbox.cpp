@@ -24,7 +24,7 @@ namespace dom {
   xpc::EnsureCompartmentPrivate((compartment))->sandboxConfig
 
 // Helper for getting JSObject* from GlobalObject (without casting .Get())
-static JSObject* getGlobalJSObject(const GlobalObject& global);
+static inline JSObject* getGlobalJSObject(const GlobalObject& global);
 //Helper for setting the ErrorResult to a string
 static void JSErrorResult(JSContext *cx, ErrorResult& aRv, const char *msg);
 // Helper for adding fresh principal to privilege ownership list of
@@ -39,6 +39,9 @@ GetSourceFromURI(JSContext* cx, const nsAString& aURL,
 ////////////////////////////////
 
 // SandboxEventTarget:
+//
+//
+NS_IMPL_CYCLE_COLLECTION_CLASS(SandboxEventTarget)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(SandboxEventTarget,
                                                   nsDOMEventTargetHelper)
@@ -50,10 +53,10 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(SandboxEventTarget,
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
-NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(SandboxEventTarget,
-                                               nsDOMEventTargetHelper)
-  NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER
-NS_IMPL_CYCLE_COLLECTION_TRACE_END
+// NS_IMPL_CYCLE_COLLECTION_TRACE_BEGIN_INHERITED(SandboxEventTarget,
+//                                                nsDOMEventTargetHelper)
+//   NS_IMPL_CYCLE_COLLECTION_TRACE_PRESERVED_WRAPPER
+// NS_IMPL_CYCLE_COLLECTION_TRACE_END
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION_INHERITED(SandboxEventTarget)
   NS_WRAPPERCACHE_INTERFACE_MAP_ENTRY
@@ -64,6 +67,8 @@ NS_IMPL_RELEASE_INHERITED(SandboxEventTarget, nsDOMEventTargetHelper)
 
 
 // Sandbox:
+
+NS_IMPL_CYCLE_COLLECTION_CLASS(Sandbox)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(Sandbox,
                                                   nsDOMEventTargetHelper)
@@ -168,7 +173,7 @@ Sandbox::Destroy()
   mEventTarget = nullptr;
   mMessage= JSVAL_VOID;
 
-  NS_DROP_JS_OBJECTS(this, Sandbox);
+  mozilla::DropJSObjects(this);
 }
 
 already_AddRefed<Sandbox>
@@ -564,7 +569,7 @@ Sandbox::SetResult(JS::Handle<JS::Value> val, ResultType type)
 {
   mResult = val;
   mResultType = type;
-  NS_HOLD_JS_OBJECTS(this, Sandbox);
+  mozilla::HoldJSObjects(this);
 }
 
 inline void
@@ -572,7 +577,7 @@ Sandbox::ClearResult()
 {
   mResult = JSVAL_VOID;
   mResultType = ResultNone;
-  NS_HOLD_JS_OBJECTS(this, Sandbox);
+  mozilla::HoldJSObjects(this);
 }
 
 inline void
@@ -580,7 +585,7 @@ Sandbox::SetMessage(JS::Handle<JS::Value> val)
 {
   mMessage = val;
   mMessageIsSet = true;
-  NS_HOLD_JS_OBJECTS(this, Sandbox);
+  mozilla::HoldJSObjects(this);
 }
 
 inline void
@@ -588,7 +593,7 @@ Sandbox::ClearMessage()
 {
   mMessage = JSVAL_VOID;
   mMessageIsSet = false;
-  NS_HOLD_JS_OBJECTS(this, Sandbox);
+  mozilla::HoldJSObjects(this);
 }
 
 
@@ -1002,8 +1007,8 @@ Sandbox::Own(const GlobalObject& global,
 }
 
 JS::Value
-Import(const GlobalObject& global, JSContext* cx,
-       const nsAString& aURL, ErrorResult& aRv)
+Sandbox::Import(const GlobalObject& global, JSContext* cx,
+                const nsAString& aURL, ErrorResult& aRv)
 {
   nsAutoString src;
   JS::RootedValue v(cx, JS::UndefinedValue());
@@ -1084,7 +1089,7 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
   xpc::SandboxOptions options(cx);
   options.wantComponents     = false;
   options.wantXrays          = false; //FIXME
-  options.wantXHRConstructor = false;
+  options.DOMConstructors.XMLHttpRequest  = true;
 
   // Set the sandbox principal and add CSP policy that restrict
   // network communication accordingly
@@ -1124,7 +1129,7 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
     rv = mPrincipal->GetURI(getter_AddRefs(uri));
     if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
 
-    csp->RefinePolicy(policy, uri, true);
+    csp->AppendPolicy(policy, uri, true, true);
     rv = mPrincipal->SetCsp(csp);
     if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
   }
@@ -1133,10 +1138,10 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
 
   JS::RootedValue sandboxVal(cx, JS::UndefinedValue());
 
-  rv = xpc_CreateSandboxObject(cx,                   //JSContext *cx, 
-                               sandboxVal.address(), //jsval *vp, 
-                               mPrincipal,           //nsISupports *prinOrSop, 
-                               options);             //SandboxOptions& options)
+  rv = xpc::CreateSandboxObject(cx,                   //JSContext *cx, 
+                                sandboxVal.address(), //jsval *vp, 
+                                mPrincipal,           //nsISupports *prinOrSop, 
+                                options);             //SandboxOptions& options)
   if (NS_FAILED(rv)) { 
     aRv.Throw(rv);
     return;
@@ -1157,10 +1162,10 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
     mEventTarget = new SandboxEventTarget();
 
     {
-      JSObject** pAI = GetProtoAndIfaceArray(sandboxObj);
-      mozilla::dom::RoleBinding::CreateInterfaceObjects(cx, sandboxObj, pAI);
-      mozilla::dom::LabelBinding::CreateInterfaceObjects(cx, sandboxObj, pAI);
-      mozilla::dom::SandboxBinding::CreateInterfaceObjects(cx, sandboxObj, pAI);
+      JS::Heap<JSObject*> * pAI = GetProtoAndIfaceArray(sandboxObj);
+      mozilla::dom::RoleBinding::CreateInterfaceObjects(cx, sandboxObj, pAI, true);
+      mozilla::dom::LabelBinding::CreateInterfaceObjects(cx, sandboxObj, pAI, true );
+      mozilla::dom::SandboxBinding::CreateInterfaceObjects(cx, sandboxObj, pAI, true);
     }
     //TODO: check if any of these fail
     JS_DefineFunction(cx, sandboxObj, "done", SandboxDone, 1, 0);
@@ -1170,7 +1175,7 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
                       JSPROP_ENUMERATE | JSPROP_SHARED);
   }
 
-  NS_HOLD_JS_OBJECTS(this, Sandbox);
+  mozilla::HoldJSObjects(this);
 }
 
 void
@@ -1249,6 +1254,8 @@ Sandbox::EvalInSandbox(JSContext *cx, const nsAString& source, ErrorResult &aRv)
 JSObject*
 getGlobalJSObject(const GlobalObject& global)
 {
+  return global.Get();
+  /* old:
   nsCOMPtr<nsIGlobalObject> nsGlob = do_QueryInterface(global.Get());
   if (!nsGlob) {
     NS_ASSERTION(nsGlob, "QI should return global object");
@@ -1256,6 +1263,7 @@ getGlobalJSObject(const GlobalObject& global)
 
   }
   return nsGlob->GetGlobalJSObject();
+  */
 }
 
 // Helper for setting the ErrorResult to a string.  This function

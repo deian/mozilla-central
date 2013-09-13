@@ -3628,7 +3628,6 @@ CreateGlobalObject(JSContext *cx, const JSClass *clasp, nsIPrincipal *principal,
 /***************************************************************************/
 // ContextHolder related
 
-namespace xpc {
 
 class ContextHolder : public nsIScriptObjectPrincipal
 {
@@ -3649,11 +3648,9 @@ private:
     static bool ContextHolderOperationCallback(JSContext *cx);
 
     JSContext* mJSContext;
-    JSContext* mOrigCx;
     nsCOMPtr<nsIPrincipal> mPrincipal;
 };
 
-} // xpc
 
 // Helper for creating a sandbox object to use for evaluating
 // untrusted code completely separated from all other code in the

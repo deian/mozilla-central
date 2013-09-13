@@ -400,13 +400,6 @@ GetJunkScopeGlobal();
 void
 SystemErrorReporter(JSContext *cx, const char *message, JSErrorReport *rep);
 
-namespace mozilla {
-namespace dom {
-class Label;
-class Sandbox;
-} //dom
-} //mozilla
-
 // We have a separate version that's exported with external linkage for use by
 // xpcshell, since external linkage on windows changes the signature to make it
 // incompatible with the JSErrorReporter type, causing JS_SetErrorReporter calls
@@ -450,6 +443,13 @@ Register(nsScriptNameSpaceManager* aNameSpaceManager);
  */
 bool IsChromeOrXBL(JSContext* cx, JSObject* /* unused */);
 
+} // namespace dom
+} // namespace mozilla
+
+namespace mozilla {
+namespace dom {
+class Label;
+class Sandbox;
 } // namespace dom
 } // namespace mozilla
 
