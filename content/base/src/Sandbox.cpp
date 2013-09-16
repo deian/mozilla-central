@@ -197,7 +197,7 @@ Sandbox::Constructor(const GlobalObject& global,
                      mozilla::dom::Label& privacy, 
                      ErrorResult& aRv)
 {
-  EnableSandbox(global);
+  EnableSandbox(global, cx);
   nsRefPtr<Label> privacyCopy = privacy.Clone(aRv);
   if (aRv.Failed())
     return nullptr;
@@ -220,7 +220,7 @@ Sandbox::Constructor(const GlobalObject& global,
                      mozilla::dom::Label& trust, 
                      ErrorResult& aRv)
 {
-  EnableSandbox(global);
+  EnableSandbox(global, cx);
   nsRefPtr<Label> privacyCopy = privacy.Clone(aRv);
   nsRefPtr<Label> trustCopy = trust.Clone(aRv);
   if (aRv.Failed())
@@ -614,11 +614,12 @@ Sandbox::SetMessageToHandle(JSContext *cx, JS::MutableHandleValue vp)
 // Static ====================================================================
 
 void
-Sandbox::EnableSandbox(const GlobalObject& global)
+Sandbox::EnableSandbox(const GlobalObject& global, JSContext *cx)
 {
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
   xpc::sandbox::EnableCompartmentSandbox(compartment);
+  js::RecomputeWrappers(cx, js::AllCompartments(), js::AllCompartments());
 }
 
 bool 
@@ -995,10 +996,10 @@ own(JSCompartment *compartment, mozilla::dom::FreshPrincipal& principal) {
 }
 
 void
-Sandbox::Own(const GlobalObject& global,
+Sandbox::Own(const GlobalObject& global, JSContext* cx,
              mozilla::dom::FreshPrincipal& principal)
 {
-  EnableSandbox(global);
+  EnableSandbox(global, cx);
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
 
@@ -1010,15 +1011,37 @@ JS::Value
 Sandbox::Import(const GlobalObject& global, JSContext* cx,
                 const nsAString& aURL, ErrorResult& aRv)
 {
-  nsAutoString src;
+  nsAutoString source;
   JS::RootedValue v(cx, JS::UndefinedValue());
 
-  GetSourceFromURI(cx, aURL, src, aRv);
+  // fetch source
+  GetSourceFromURI(cx, aURL, source, aRv);
   if (aRv.Failed())
     return v;
 
-  //TODO: evaluate the src
+  // get compartment principal
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
 
+  nsIPrincipal* prin = xpc::GetCompartmentPrincipal(compartment);
+  if (!prin) { 
+    aRv.Throw(NS_ERROR_FAILURE);
+    return v;
+  }
+
+  // eval string
+  JS::CompileOptions options(cx);
+  options.setPrincipals(nsJSPrincipals::get(prin))
+         .setFileAndLine(NS_ConvertUTF16toUTF8(aURL).get(), 1)
+         .setUTF8(true);
+
+  JS::RootedObject rootedGlobal(cx, getGlobalJSObject(global));
+  bool ok = JS::Evaluate(cx, rootedGlobal, options,
+                         NS_ConvertUTF16toUTF8(source).get(), source.Length(),
+                         v.address());
+  if (ok) return v;
+
+  aRv.Throw(NS_ERROR_FAILURE);
   return v;
 }
 
@@ -1233,7 +1256,7 @@ Sandbox::EvalInSandbox(JSContext *cx, const nsAString& source, ErrorResult &aRv)
         RaiseLabel();
 
         // If the sandbox threw an exception, grab it off the context.
-        if (JS_GetPendingException(sandcx, v.address())) {
+        if (ok && JS_GetPendingException(sandcx, v.address())) {
           MOZ_ASSERT(!ok);
           JS_ClearPendingException(sandcx);
         }

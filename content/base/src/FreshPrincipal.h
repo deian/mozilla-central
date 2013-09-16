@@ -38,7 +38,7 @@ public:
                                JS::Handle<JSObject*> aScope) MOZ_OVERRIDE;
 
   static already_AddRefed<FreshPrincipal>
-    Constructor(const GlobalObject& global, ErrorResult& aRv);
+    Constructor(const GlobalObject& global, JSContext *cx, ErrorResult& aRv);
 
   already_AddRefed<nsIPrincipal> Principal() const;
 

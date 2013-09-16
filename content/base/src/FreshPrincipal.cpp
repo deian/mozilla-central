@@ -53,12 +53,13 @@ FreshPrincipal::WrapObject(JSContext* aCx, JS::Handle<JSObject*> aScope)
 }
 
 already_AddRefed<FreshPrincipal>
-FreshPrincipal::Constructor(const GlobalObject& global, ErrorResult& aRv)
+FreshPrincipal::Constructor(const GlobalObject& global, 
+                            JSContext *cx, ErrorResult& aRv)
 {
   nsresult rv;
   nsRefPtr<FreshPrincipal> p = new FreshPrincipal(rv);
   if (NS_SUCCEEDED(rv)) {
-    Sandbox::Own(global, *p);
+    Sandbox::Own(global, cx, *p);
     return p.forget();
   }
 

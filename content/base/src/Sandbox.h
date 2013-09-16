@@ -138,7 +138,7 @@ public:
 
 public: // Static DOM interface ==============================================
 
-  static void EnableSandbox(const GlobalObject& global);
+  static void EnableSandbox(const GlobalObject& global, JSContext *cx);
   static bool IsSandboxed(const GlobalObject& global);
   static bool IsSandbox(const GlobalObject& global);
   static bool IsSandboxMode(const GlobalObject& global);
@@ -177,7 +177,7 @@ public: // Static DOM interface ==============================================
   static already_AddRefed<Label> GetPrivileges(const GlobalObject& global);
 
   // Take ownership of principal
-  static void Own(const GlobalObject& global,
+  static void Own(const GlobalObject& global, JSContext *cx,
                   mozilla::dom::FreshPrincipal& principal);
 
 
