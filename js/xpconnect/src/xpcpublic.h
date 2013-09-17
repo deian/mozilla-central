@@ -475,10 +475,7 @@ NS_EXPORT_(bool)
 IsCompartmentSandboxMode(JSCompartment *compartment);
 
 NS_EXPORT_(void)
-FreezeCompartmentSandbox(JSCompartment *compartment);
-
-NS_EXPORT_(bool)
-IsCompartmentSandboxFrozen(JSCompartment *compartment);
+RefineCompartmentSandboxPolicies(JSCompartment *compartment, JSContext *cx = nullptr);
 
 #define DECLARE_SET_LABEL(name)                       \
     NS_EXPORT_(void)                                  \
@@ -523,7 +520,9 @@ GuardRead(JSCompartment *compartment, JSCompartment *source, bool isRead = true)
 NS_EXPORT_(bool)
 GuardRead(JSCompartment *compatment,
           mozilla::dom::Label &privacy, mozilla::dom::Label &trust,
-          mozilla::dom::Label *aPrivs = nullptr);
+          mozilla::dom::Label *aPrivs = nullptr,
+          JSContext *cx = nullptr,
+          bool doTaint = false);
 
 } // namespace sandbox
 } // namespace xpc

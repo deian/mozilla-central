@@ -171,10 +171,11 @@ public: // Static DOM interface ==============================================
   // privs
 
   // Get underlying pricipal
-  static void GetPrincipal(const GlobalObject& global, nsString& retval); 
+  static void GetPrincipal(const GlobalObject& global, JSContext* cx, nsString& retval); 
 
   // Ownership
-  static already_AddRefed<Label> GetPrivileges(const GlobalObject& global);
+  static already_AddRefed<Label> GetPrivileges(const GlobalObject& global,
+                                               JSContext* cx);
 
   // Take ownership of principal
   static void Own(const GlobalObject& global, JSContext *cx,
@@ -216,6 +217,10 @@ protected: // Unsafe functions ===============================================
   friend class xpc::sandbox::SandboxConfig;
 
 private:
+  void SetPrivacyLabel(JSContext* cx, JSCompartment *compartment,
+                       mozilla::dom::Label& aLabel, ErrorResult& aRv);
+  void SetTrustLabel(JSContext* cx, JSCompartment *compartment,
+                     mozilla::dom::Label& aLabel, ErrorResult& aRv);
 
   void Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv);
   void EvalInSandbox(JSContext *cx, const nsAString& source, ErrorResult &aRv);

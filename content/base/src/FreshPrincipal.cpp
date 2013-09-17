@@ -56,6 +56,7 @@ already_AddRefed<FreshPrincipal>
 FreshPrincipal::Constructor(const GlobalObject& global, 
                             JSContext *cx, ErrorResult& aRv)
 {
+  Sandbox::EnableSandbox(global, cx);
   nsresult rv;
   nsRefPtr<FreshPrincipal> p = new FreshPrincipal(rv);
   if (NS_SUCCEEDED(rv)) {

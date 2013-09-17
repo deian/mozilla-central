@@ -43,6 +43,12 @@ interface Label {
   [Throws] Label _or(Label other);
 
   /**
+   * Remove components that the other label subsumes.
+   */
+  void reduce(Label other);
+
+
+  /**
    * Is this label empty?
    */
   [Pure] readonly attribute boolean isEmpty;

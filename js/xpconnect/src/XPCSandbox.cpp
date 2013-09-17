@@ -64,24 +64,12 @@ EnableCompartmentSandbox(JSCompartment *compartment,
     SANDBOX_CONFIG(compartment).SetTrustLabel(trust);
 
     // set privileges to compartment principal
-
-    nsCOMPtr<nsIPrincipal> privPrin;
-    { // make "copy" of compartment principal
-      nsresult rv;
-      nsCOMPtr<nsIPrincipal> prin = GetCompartmentPrincipal(compartment);
-
-      nsCOMPtr<nsIScriptSecurityManager> secMan =
-        nsContentUtils::GetSecurityManager();
-      MOZ_ASSERT(secMan);
-
-      nsCOMPtr<nsIURI> uri;
-      rv = prin->GetURI(getter_AddRefs(uri));
-      MOZ_ASSERT(NS_SUCCEEDED(rv));
-
-      rv = secMan->GetNoAppCodebasePrincipal(uri, getter_AddRefs(privPrin));
-      MOZ_ASSERT(NS_SUCCEEDED(rv));
-    }
-
+    // we're not "copying" the principal since the principal may be a
+    // null principal (iframe sandbox) and thus not a codebase principal
+    //
+    // TODO[script]: set the privileges to the empty privileges once
+    // we have privileged script tag
+    nsCOMPtr<nsIPrincipal> privPrin = GetCompartmentPrincipal(compartment);
     nsRefPtr<Role> privRole = new Role(privPrin);
     ErrorResult aRv;
     nsRefPtr<Label> privileges = new Label(*privRole, aRv);
@@ -112,13 +100,6 @@ IsCompartmentSandboxMode(JSCompartment *compartment)
   return SANDBOX_CONFIG(compartment).isSandboxMode();
 }
 
-NS_EXPORT_(void)
-FreezeCompartmentSandbox(JSCompartment *compartment)
-{
-  MOZ_ASSERT(compartment);
-  return SANDBOX_CONFIG(compartment).Freeze();
-}
-
 // This function adjusts the "security permieter".
 // Specifically, it adjusts:
 // 1. The CSP policy to restrict with whom the current compartment may
@@ -126,19 +107,26 @@ FreezeCompartmentSandbox(JSCompartment *compartment)
 // 2. The compartment principal to restrict writing to storage
 // cnannels.
 //
-static void
-AdjustSecurityPerimeter(JSCompartment *compartment)
+NS_EXPORT_(void)
+RefineCompartmentSandboxPolicies(JSCompartment *compartment, JSContext *cx)
 {
 
   // In sandbox, no need to adjust underlying principal/policy
   // Only adjust sandbox-mode compartments
-  if (!SANDBOX_CONFIG(compartment).isSandboxMode())
+  if (!IsCompartmentSandboxMode(compartment))
     return;
 
   nsresult rv;
 
-  // Get privacy label and reduce it:
-  nsRefPtr<Label> privacy = SANDBOX_CONFIG(compartment).GetPrivacyLabel();
+  // Clone the privacy label and reduce it:
+  nsRefPtr<Label> privacy;
+  {
+    ErrorResult aRv;
+    nsRefPtr<Label> originalPrivacy =
+      SANDBOX_CONFIG(compartment).GetPrivacyLabel();
+      privacy = originalPrivacy->Clone(aRv);
+    MOZ_ASSERT(!aRv.Failed());
+  }
   nsRefPtr<Label> privs = GetCompartmentPrivileges(compartment);
   privacy->Reduce(*privs);
 
@@ -146,45 +134,16 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
   if (privacy->IsEmpty())
     return;
 
-  nsCOMPtr<nsIPrincipal> compPrincipal = GetCompartmentPrincipal(compartment);
-  MOZ_ASSERT(compPrincipal);
-
-  // If CSP policy exists, get it
-  nsCOMPtr<nsIContentSecurityPolicy> csp;
-  rv = compPrincipal->GetCsp(getter_AddRefs(csp));
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
-  // Get self uri
   nsString policy;
-  nsCOMPtr<nsIURI> uri;
-  rv = compPrincipal->GetURI(getter_AddRefs(uri));
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
-
-  // Create a new CSP object, if none exist
-  if(!csp) {
-    csp = do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
-    MOZ_ASSERT(NS_SUCCEEDED(rv) && csp);
-    rv = compPrincipal->SetCsp(csp);
-    MOZ_ASSERT(NS_SUCCEEDED(rv)); // depends on bug 886164
-  }
-
   PrincipalArray* labelPrincipals = privacy->GetPrincipalsIfSingleton();
-  bool disableStorage = false;
 
   if (labelPrincipals && labelPrincipals->Length() > 0) {
+    // Case 2: singleton disjunctive role 
+    // Allow network access to all the origins in the list (and in the
+    // privileges), but disable storage access since we can't
+    // communicate with content origin.
 
-    // Same as as Case 1, should not really occur since we reduce
-    // sandbox-mode label above
-    if (MOZ_UNLIKELY(labelPrincipals->Length() == 1  &&
-        labelPrincipals->ElementAt(0)->Equals(compPrincipal)))
-      return;
-
-    // Case 2: label has the form Role([a.com , b.com , ... ])
-    // Allow network access to all the origins in the list, but
-    // disable storage access since we can't communicate with content
-    // origin.
-    disableStorage = true;
-
-    // create list of origins
+    // Create list of origins
     nsString origins;
     for (unsigned i = 0; i < labelPrincipals->Length(); ++i) {
       char *origin = NULL;
@@ -206,14 +165,9 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
            + NS_LITERAL_STRING(";connect-src ") + origins
            + NS_LITERAL_STRING(";");
 
-    //XXX why was I getting the uri of the first principal??
-    //rv = labelPrincipals->ElementAt(0)->GetURI(getter_AddRefs(uri));
-    //MOZ_ASSERT(NS_SUCCEEDED(rv));
-
   } else {
     // Case 3: not the empty label or singleton disjunctive role
-    // Disable all network and storage access
-    disableStorage = true;
+    // Disable all network and storage access.
 
     // Policy to disable all communication
     policy = NS_LITERAL_STRING("default-src 'none';\
@@ -227,55 +181,72 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
                                 connect-src 'none';");
   }
 
-  // Refine policy
-  csp->AppendPolicy(policy, uri, false, true);
+  nsCOMPtr<nsIContentSecurityPolicy> csp;
+  {
+    nsCOMPtr<nsIPrincipal> compPrincipal = GetCompartmentPrincipal(compartment);
+    MOZ_ASSERT(compPrincipal);
 
-
-  if (disableStorage) {
-    // Swap the compartment principal with a new null principal
-    compPrincipal = do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
-    MOZ_ASSERT (NS_SUCCEEDED(rv));
-
-    SetCompartmentPrincipal(compartment, compPrincipal);
-
-    nsCOMPtr<nsIURI> baseURI;
-    nsresult rv = compPrincipal->GetURI(getter_AddRefs(baseURI));
+    // If CSP policy exists on current compartment, get it.
+    // we handle composition of IFC with CSP by tightening down CSP
+    rv = compPrincipal->GetCsp(getter_AddRefs(csp));
     MOZ_ASSERT(NS_SUCCEEDED(rv));
-
-    // set the compartment location
-    EnsureCompartmentPrivate(compartment)->SetLocationURI(baseURI);
-
-    // Get the compartment global
-    nsCOMPtr<nsIGlobalObject> global =
-      GetNativeForGlobal(JS_GetGlobalForCompartmentOrNull(compartment));
-
-    // Get the underlying window
-    nsCOMPtr<nsIDOMWindow> win(do_QueryInterface(global));
-    MOZ_ASSERT(win);
-
-    // Get the window document
-    nsCOMPtr<nsIDOMDocument> domDoc;
-    win->GetDocument(getter_AddRefs(domDoc)); MOZ_ASSERT(domDoc);
-
-    nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
-    MOZ_ASSERT(doc);
-
-    // Set the document principal
-    doc->SetPrincipal(compPrincipal);
-
-    // Change the document base uri to the nullprincipal uri
-    doc->SetBaseURI(baseURI);
-
-    // Set iframe sandbox flags most restrcting flags:
-    uint32_t flags =
-      nsContentUtils::ParseSandboxAttributeToFlags(NS_LITERAL_STRING(""));
-
-    doc->SetSandboxFlags(flags);
-
-    // Set CSP since we created a new principal
-    rv = compPrincipal->SetCsp(csp);
-    MOZ_ASSERT(NS_SUCCEEDED(rv)); // depends on bug 886164
+    // Create a new CSP object, if none exist
+    if(!csp) {
+      csp = do_CreateInstance("@mozilla.org/contentsecuritypolicy;1", &rv);
+      MOZ_ASSERT(NS_SUCCEEDED(rv) && csp);
+    }
   }
+
+  // Create new principal to be used for document
+  nsCOMPtr<nsIPrincipal> compPrincipal =
+    do_CreateInstance("@mozilla.org/nullprincipal;1", &rv);
+  MOZ_ASSERT (NS_SUCCEEDED(rv));
+
+  // Set the compartment principal to this new principal
+  SetCompartmentPrincipal(compartment, compPrincipal);
+
+  // Get the principal URI
+  nsCOMPtr<nsIURI> baseURI;
+  rv = compPrincipal->GetURI(getter_AddRefs(baseURI));
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+  // Set the compartment location to the base URI
+  EnsureCompartmentPrivate(compartment)->SetLocationURI(baseURI);
+
+  // Get the compartment global
+  nsCOMPtr<nsIGlobalObject> global =
+    GetNativeForGlobal(JS_GetGlobalForCompartmentOrNull(compartment));
+
+  // Get the underlying window
+  nsCOMPtr<nsIDOMWindow> win(do_QueryInterface(global));
+  MOZ_ASSERT(win);
+
+  // Get the window document
+  nsCOMPtr<nsIDOMDocument> domDoc;
+  win->GetDocument(getter_AddRefs(domDoc)); MOZ_ASSERT(domDoc);
+
+  nsCOMPtr<nsIDocument> doc(do_QueryInterface(domDoc));
+  MOZ_ASSERT(doc);
+
+  // Set the document principal
+  doc->SetPrincipal(compPrincipal);
+
+  // Change the document base uri to the new base URI
+  doc->SetBaseURI(baseURI);
+
+  // Set iframe sandbox flags most restrcting flags:
+  uint32_t flags =
+    nsContentUtils::ParseSandboxAttributeToFlags(NS_LITERAL_STRING(""));
+  doc->SetSandboxFlags(flags);
+
+  // Refine policy of the csp object (may not be new)
+  csp->AppendPolicy(policy, baseURI, false, true);
+  // set CSP  since we created a new principal
+  rv = compPrincipal->SetCsp(csp);
+  MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+  if (cx)
+    js::RecomputeWrappers(cx, js::AllCompartments(), js::AllCompartments());
 }
 
 
@@ -304,6 +275,7 @@ AdjustSecurityPerimeter(JSCompartment *compartment)
   GetCompartment##name(JSCompartment *compartment)                \
   {                                                               \
     MOZ_ASSERT(compartment);                                      \
+    MOZ_ASSERT(sandbox::IsCompartmentSandboxed(compartment));     \
     return SANDBOX_CONFIG(compartment).Get##name();               \
   }
 
@@ -348,6 +320,7 @@ DEFINE_GET_LABEL(TrustClearance)
 NS_EXPORT_(already_AddRefed<mozilla::dom::Label>)
 GetCompartmentPrivileges(JSCompartment*compartment)
 {
+  MOZ_ASSERT(sandbox::IsCompartmentSandboxed(compartment));
   ErrorResult aRv;
 
   nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
@@ -363,6 +336,7 @@ NS_EXPORT_(mozilla::dom::Sandbox*)
 GetCompartmentSandbox(JSCompartment *compartment)
 {
   MOZ_ASSERT(compartment);
+  MOZ_ASSERT(sandbox::IsCompartmentSandboxed(compartment));
   return SANDBOX_CONFIG(compartment).GetSandbox();
 }
     
@@ -375,8 +349,13 @@ GetCompartmentSandbox(JSCompartment *compartment)
 NS_EXPORT_(bool)
 GuardRead(JSCompartment *compartment,
           mozilla::dom::Label &privacy, mozilla::dom::Label &trust,
-          mozilla::dom::Label *aPrivs)
+          mozilla::dom::Label *aPrivs,
+          JSContext *cx,
+          bool doTaint)
 {
+  if (!sandbox::IsCompartmentSandboxed(compartment))
+    return false;
+
   ErrorResult aRv;
 
   nsRefPtr<Label> privs = aPrivs ? aPrivs : new Label();
@@ -393,44 +372,46 @@ GuardRead(JSCompartment *compartment,
 
   // <privacy,trust> [=_privs <compPrivacy,compTrust>
   if (compPrivacy->Subsumes(*privs, privacy) && 
-      trust.Subsumes(*privs, *compTrust))
+      trust.Subsumes(*privs, *compTrust)) 
     return true;
 
   // Compartment cannot directly read data, see if we can taint be to
   // allow it to read.
 
-  nsRefPtr<mozilla::dom::Label> clrPrivacy =
-    xpc::sandbox::GetCompartmentPrivacyClearance(compartment);
-  nsRefPtr<mozilla::dom::Label> clrTrust   =
-    xpc::sandbox::GetCompartmentTrustClearance(compartment);
+  if (doTaint) {
+    nsRefPtr<mozilla::dom::Label> clrPrivacy =
+      xpc::sandbox::GetCompartmentPrivacyClearance(compartment);
+    nsRefPtr<mozilla::dom::Label> clrTrust   =
+      xpc::sandbox::GetCompartmentTrustClearance(compartment);
 
-  bool sandboxMode = SANDBOX_CONFIG(compartment).isSandboxMode();
+    bool sandboxMode = SANDBOX_CONFIG(compartment).isSandboxMode();
 
-  if ((sandboxMode && !clrPrivacy && !clrTrust) || 
-      // in sandbox-mode without clearance
-      (clrPrivacy->Subsumes(*privs,privacy) && 
-       trust.Subsumes(*privs, *clrTrust)))
+    if ((sandboxMode && !clrPrivacy && !clrTrust) || 
+        // in sandbox-mode without clearance
+        (clrPrivacy->Subsumes(*privs,privacy) && 
+         trust.Subsumes(*privs, *clrTrust)))
       // <privacy,trust> [=_privs <clrPrivacy,clrTrust>
-  {
-    // Label of object is not above clearance (if clearance is set),
-    // so raise compartment label to allow the read.
+    {
+      // Label of object is not above clearance (if clearance is set),
+      // so raise compartment label to allow the read.
 
-    // join privacy
-    compPrivacy->_And(privacy, aRv); 
-    NS_ASSERTION(!aRv.Failed(), "internal _And clone failed.");
-    if (aRv.Failed()) return false;
-    //TODO: compPrivacy->Reduce(*privs);
+      // join privacy
+      compPrivacy->_And(privacy, aRv); 
+      NS_ASSERTION(!aRv.Failed(), "internal _And clone failed.");
+      if (aRv.Failed()) return false;
+      //TODO: compPrivacy->Reduce(*privs);
 
-    // join trust
-    compTrust->_Or(trust, aRv);
-    NS_ASSERTION(!aRv.Failed(), "internal _Or clone failed.");
-    if (aRv.Failed()) return false;
-    //TODO: compTrust->Reduce(*privs);
+      // join trust
+      compTrust->_Or(trust, aRv);
+      NS_ASSERTION(!aRv.Failed(), "internal _Or clone failed.");
+      if (aRv.Failed()) return false;
+      //TODO: compTrust->Reduce(*privs);
 
-    AdjustSecurityPerimeter(compartment);
+      RefineCompartmentSandboxPolicies(compartment, cx);
 
-    return true;
-  } 
+      return true;
+    } 
+  }
 
   return false;
 }
@@ -448,7 +429,7 @@ GuardRead(JSCompartment *compartment, JSCompartment *source, bool isRead)
 
 
   //No information exchange between a non-sandboxed and sandboxed compartment
-  if (!sandbox::IsCompartmentSandboxed(source))
+  if (!sandbox::IsCompartmentSandboxed(compartment))
     return false;
 
   if (!sandbox::IsCompartmentSandboxed(compartment))

@@ -73,12 +73,13 @@ public: // C++ only:
 
 private:
 
+public: // XXX TODO make private, unsafe
   PrincipalArray* GetDirectPrincipals()
   {
     return &mPrincipals;
   }
 
-  friend class Label;
+//  friend class Label;
 
 private:
   PrincipalArray mPrincipals;

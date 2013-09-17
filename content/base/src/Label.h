@@ -62,6 +62,9 @@ public:
   already_AddRefed<Label> Or(mozilla::dom::Role& role, ErrorResult& aRv);
   already_AddRefed<Label> Or(mozilla::dom::Label& other, ErrorResult& aRv);
 
+  // TODO: add a version that returns Label
+  void Reduce(mozilla::dom::Label &label);
+
   bool IsEmpty() const;
 
   already_AddRefed<Label> Clone(ErrorResult &aRv) const;
@@ -80,9 +83,6 @@ public: // C++ only:
   void _Or(mozilla::dom::Role& role, ErrorResult& aRv);
   void _Or(mozilla::dom::Label& label, ErrorResult& aRv);
 
-  // Reduce label by removing any elements that he supplied privilege
-  // subsumes
-  void Reduce(mozilla::dom::Label &label);
 
   // Get principal if label is singleton
   already_AddRefed<nsIPrincipal> GetPrincipalIfSingleton() const;
@@ -93,6 +93,7 @@ private:
   void InternalAnd(mozilla::dom::Role& role, ErrorResult* aRv = nullptr,
                    bool clone = false);
 
+public: // XXX TODO make private, unsafe
   RoleArray* GetDirectRoles()
   {
     return &mRoles;

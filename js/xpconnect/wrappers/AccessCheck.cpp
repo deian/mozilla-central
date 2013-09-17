@@ -451,6 +451,7 @@ ComponentsObjectPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, W
 bool
 SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::Action act)
 {
+    printf("!!! SandboxPolicy::check \n");
     RootedObject wrapper(cx, wrapperArg);
     RootedId id(cx, idArg);
     RootedObject wrapped(cx, Wrapper::wrappedObject(wrapper));
@@ -488,7 +489,6 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
     // Do not handle the case where the fromCompartment is 
     // not a sandbox/sandbox-mode TODO:
     if (!sandbox::IsCompartmentSandboxed(fromCompartment)) {
-        printf("A\n");
         return false;
     }
 

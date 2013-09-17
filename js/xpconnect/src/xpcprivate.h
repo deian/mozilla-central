@@ -3719,7 +3719,6 @@ public:
                     , mTrustClearance(nullptr)
                     , mPrivileges(nullptr)
                     , mSandbox(nullptr)
-                    , mFrozen(false)
     {}
 
     ~SandboxConfig() {
@@ -3747,17 +3746,6 @@ public:
         return  mPrivacyLabel && mTrustLabel;
     }
 
-    // Freeze sandbox-mode compartment
-    inline void Freeze() {
-        NS_ASSERTION(isSandboxMode(), 
-                     "Freeze called on non sandbox-mode compartment");
-        mFrozen = true;
-    }
-    // Is the compartment frozen
-    inline bool isFrozen() {
-        return mFrozen;
-    }
-
     // Is the compartment in sandbox mode
     inline bool HaveClerance() {
         return  !!mPrivacyClearance && !!mTrustClearance;
@@ -3765,7 +3753,6 @@ public:
 
 #define DEFINE_SET_LABEL(name, sboxSetter)                               \
     inline void Set##name(mozilla::dom::Label *aLabel) {                 \
-        NS_ASSERTION(!isFrozen(), "Set##name called on frozen-sandbox"); \
         NS_ASSERTION(aLabel, "Set##name called with null label!");       \
         if (isSandbox()) {                                               \
            mSandbox->sboxSetter(aLabel);                                 \
@@ -3783,7 +3770,6 @@ public:
 
 #define DEFINE_SET_CLEARANCE(name)                                       \
     inline void Set##name(mozilla::dom::Label *aLabel) {                 \
-        NS_ASSERTION(!isFrozen(), "Set##name called on frozen sandbox"); \
         NS_ASSERTION(aLabel, "Set##name called with null label!");       \
         NS_ASSERTION(isSandboxMode(), "Set##name called on sandbox!");   \
         (m##name) = aLabel;                                              \
@@ -3848,9 +3834,6 @@ private:
 
     // Compartment sandbox
     mozilla::dom::Sandbox* mSandbox;
-
-    // Is sandbox-mode compartment frozen?
-    bool mFrozen;
 };
 } //namespace sandbox
 
