@@ -451,7 +451,6 @@ ComponentsObjectPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, W
 bool
 SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::Action act)
 {
-    printf("!!! SandboxPolicy::check \n");
     RootedObject wrapper(cx, wrapperArg);
     RootedId id(cx, idArg);
     RootedObject wrapped(cx, Wrapper::wrappedObject(wrapper));
