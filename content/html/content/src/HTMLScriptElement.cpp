@@ -216,11 +216,27 @@ HTMLScriptElement::SetAsync(bool aValue, ErrorResult& rv)
 }
 
 nsresult
+HTMLScriptElement::GetPrivileged(bool* aValue)
+{
+  *aValue = Privileged();
+  return NS_OK;
+}
+
+bool
+HTMLScriptElement::Privileged()
+{
+  return mPrivileged || GetBoolAttr(nsGkAtoms::privileged);
+}
+
+nsresult
 HTMLScriptElement::AfterSetAttr(int32_t aNamespaceID, nsIAtom* aName,
                                 const nsAttrValue* aValue, bool aNotify)
 {
   if (nsGkAtoms::async == aName && kNameSpaceID_None == aNamespaceID) {
     mForceAsync = false;
+  }
+  if (nsGkAtoms::privileged == aName && kNameSpaceID_None == aNamespaceID) {
+    mPrivileged = true;
   }
   return nsGenericHTMLElement::AfterSetAttr(aNamespaceID, aName, aValue,
                                             aNotify);

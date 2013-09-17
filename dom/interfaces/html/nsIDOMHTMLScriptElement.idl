@@ -29,4 +29,5 @@ interface nsIDOMHTMLScriptElement : nsISupports
            attribute DOMString        htmlFor;
            attribute DOMString        event;
            attribute DOMString        crossOrigin;
+  readonly attribute boolean          privileged;
 };

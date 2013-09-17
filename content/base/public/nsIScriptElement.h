@@ -38,6 +38,7 @@ public:
       mFrozen(false),
       mDefer(false),
       mAsync(false),
+      mPrivileged(false),
       mExternal(false),
       mParserCreated(aFromParser == mozilla::dom::FROM_PARSER_FRAGMENT ?
                      mozilla::dom::NOT_FROM_PARSER : aFromParser),
@@ -96,6 +97,15 @@ public:
   }
 
   /**
+   * Is the script privileged. Currently only supported by HTML scripts.
+   */
+  bool GetScriptPrivileged()
+  {
+    NS_PRECONDITION(mFrozen, "Not ready for this call yet!");
+    return mPrivileged;  
+  }
+
+  /**
    * Is the script an external script?
    */
   bool GetScriptExternal()
@@ -142,11 +152,14 @@ public:
     mCreatorParser = nullptr;
     mParserCreated = mozilla::dom::NOT_FROM_PARSER;
     bool async = false;
+    bool privileged = false;
     nsCOMPtr<nsIDOMHTMLScriptElement> htmlScript = do_QueryInterface(this);
     if (htmlScript) {
       htmlScript->GetAsync(&async);
+      htmlScript->GetPrivileged(&privileged);
     }
     mForceAsync = !async;
+    mPrivileged = privileged;
   }
 
   void SetCreatorParser(nsIParser* aParser)
@@ -299,6 +312,11 @@ protected:
    * The effective asyncness.
    */
   bool mAsync;
+
+  /**
+   * The effective privilegeness.
+   */
+  bool mPrivileged;
   
   /**
    * The effective externalness. A script can be external with mUri being null

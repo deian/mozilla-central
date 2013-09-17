@@ -23,6 +23,7 @@ interface HTMLScriptElement : HTMLElement {
   attribute DOMString crossOrigin;
   [SetterThrows]
   attribute DOMString text;
+  readonly attribute boolean privileged;
 };
 
 // http://www.whatwg.org/specs/web-apps/current-work/#other-elements,-attributes-and-apis
