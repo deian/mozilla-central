@@ -50,6 +50,7 @@
 
 #include "mozilla/CORSMode.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/Sandbox.h"
 
 #ifdef PR_LOGGING
 static PRLogModuleInfo* gCspPRLog;
@@ -57,6 +58,7 @@ static PRLogModuleInfo* gCspPRLog;
 
 using namespace mozilla;
 using namespace mozilla::dom;
+
 
 //////////////////////////////////////////////////////////////
 // Per-request data structure
@@ -824,6 +826,7 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest, void **aOffThreadT
     aRequest->mElement->GetScriptText(textData);
 
     script = &textData;
+
   }
   else {
     script = &aRequest->mScriptText;
@@ -954,6 +957,7 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
                                const nsAFlatString& aScript,
                                void** aOffThreadToken)
 {
+  printf("!!!  nsScriptLoader::EvaluateScript\n");
   nsresult rv = NS_OK;
 
   // We need a document to evaluate scripts.
@@ -989,13 +993,38 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
   nsCOMPtr<nsIScriptElement> oldCurrent = mCurrentScript;
   mCurrentScript = aRequest->mElement;
 
+  bool isPrivilegedScript = false;
+
+  // Check if this is a privileged script
+  nsCOMPtr<nsIDOMHTMLScriptElement> htmlScriptElement =
+    do_QueryInterface(aRequest->mElement);
+  if (htmlScriptElement) {
+    bool priv = false;
+    rv = htmlScriptElement->GetPrivileged(&priv);
+    isPrivilegedScript = NS_SUCCEEDED(rv) && priv;
+  }
+
   JSVersion version = JSVersion(aRequest->mJSVersion);
   if (version != JSVERSION_UNKNOWN) {
+
+    // Attach privilege to global, if privilged script
+    if (MOZ_UNLIKELY(isPrivilegedScript)) {
+      JS_DefineProperty(cx, global, "__sandboxPrivilege", JSVAL_VOID,
+                        Sandbox::SandboxGetPrivilege, NULL,
+                        JSPROP_ENUMERATE | JSPROP_SHARED);
+    }
+
     JS::CompileOptions options(cx);
     FillCompileOptionsForRequest(aRequest, global, &options);
     rv = context->EvaluateString(aScript, global,
                                  options, /* aCoerceToString = */ false, nullptr,
                                  aOffThreadToken);
+
+    // Detach privilege from global, if privilged script
+    if (MOZ_UNLIKELY(isPrivilegedScript)) {
+      JS_DeleteProperty(cx, global, "__sandboxPrivilege");
+    }
+
   }
 
   // Put the old script back in case it wants to do anything else.

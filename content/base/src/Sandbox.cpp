@@ -1075,6 +1075,15 @@ Sandbox::Import(const GlobalObject& global, JSContext* cx,
   return v;
 }
 
+bool
+Sandbox::SandboxGetPrivilege(JSContext *cx,
+                             JS::HandleObject obj, JS::HandleId id,
+                             JS::MutableHandleValue vp)
+{
+  vp.set(JS::Int32Value(42));
+  return true;
+}
+
 // Internal ==================================================================
 
 

@@ -135,7 +135,6 @@ public:
   inline void ClearMessage();
   bool SetMessageToHandle(JSContext *cx, JS::MutableHandleValue vp);
 
-
 public: // Static DOM interface ==============================================
 
   static void EnableSandbox(const GlobalObject& global, JSContext *cx);
@@ -187,6 +186,13 @@ public: // Static DOM interface ==============================================
   // Import script from specified url
   static JS::Value Import(const GlobalObject& global, JSContext* cx,
                           const nsAString& aURL, ErrorResult& aRv);
+
+public: // privileged scripts
+  static bool SandboxGetPrivilege(JSContext *cx,
+                                  JS::HandleObject obj, JS::HandleId id,
+                                  JS::MutableHandleValue vp);
+
+
 
 public: // TODO REMOVE =======================================================
   JSObject* GetSandbox(JSContext* cx) const { return mSandboxObj; }
