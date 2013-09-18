@@ -141,10 +141,13 @@ RefineCompartmentSandboxPolicies(JSCompartment *compartment, JSContext *cx)
     }
 
     policy = NS_LITERAL_STRING("default-src ")  + origins
+               + NS_LITERAL_STRING("'unsafe-inline'")
            + NS_LITERAL_STRING(";script-src ")  + origins
+               + NS_LITERAL_STRING("'unsafe-inline'")
            + NS_LITERAL_STRING(";object-src ")  + origins
            + NS_LITERAL_STRING(";style-src ")   + origins
            + NS_LITERAL_STRING(";img-src ")     + origins
+               + NS_LITERAL_STRING("'unsafe-inline'")
            + NS_LITERAL_STRING(";media-src ")   + origins
            + NS_LITERAL_STRING(";frame-src ")   + origins
            + NS_LITERAL_STRING(";font-src ")    + origins
@@ -156,10 +159,10 @@ RefineCompartmentSandboxPolicies(JSCompartment *compartment, JSContext *cx)
     // Disable all network and storage access.
 
     // Policy to disable all communication
-    policy = NS_LITERAL_STRING("default-src 'none';\
-                                script-src  'none';\
+    policy = NS_LITERAL_STRING("default-src 'none' 'unsafe-inline';\
+                                script-src  'none' 'unsafe-inline';\
                                 object-src  'none';\
-                                style-src   'none';\
+                                style-src   'none' 'unsafe-inline';\
                                 img-src     'none';\
                                 media-src   'none';\
                                 frame-src   'none';\
@@ -222,7 +225,7 @@ RefineCompartmentSandboxPolicies(JSCompartment *compartment, JSContext *cx)
 
   // Set iframe sandbox flags most restrcting flags:
   uint32_t flags =
-    nsContentUtils::ParseSandboxAttributeToFlags(NS_LITERAL_STRING(""));
+    nsContentUtils::ParseSandboxAttributeToFlags(NS_LITERAL_STRING("allow-scripts"));
   doc->SetSandboxFlags(flags);
 
   // Refine policy of the csp object (may not be new)
@@ -239,6 +242,8 @@ RefineCompartmentSandboxPolicies(JSCompartment *compartment, JSContext *cx)
   // set CSP  since we created a new principal
   rv = compPrincipal->SetCsp(csp);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
+
+  //printf("!!! Set CSP to: %s", NS_ConvertUTF16toUTF8(policy).get());
 
   if (cx)
     js::RecomputeWrappers(cx, js::AllCompartments(), js::AllCompartments());

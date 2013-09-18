@@ -1199,11 +1199,11 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
 
   nsString policy;
   if (mPrivacy->IsEmpty()) { // case 1: public label:
-    policy = NS_LITERAL_STRING("default-src *");
+    policy = NS_LITERAL_STRING("default-src * 'unsafe-inline'");
   } else if (!principal) {   // case 2: conjunctive label:
-    policy = NS_LITERAL_STRING("default-src 'none';");
+    policy = NS_LITERAL_STRING("default-src 'none' 'unsafe-inline';");
   } else {                   // case 3: singleton label:
-    policy = NS_LITERAL_STRING("default-src 'none'; \
+    policy = NS_LITERAL_STRING("default-src 'none' 'unsafe-inline'; \
                                 connect-src 'self';");
   }
 
