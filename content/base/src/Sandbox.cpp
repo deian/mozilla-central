@@ -1216,6 +1216,14 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
     rv = mPrincipal->GetURI(getter_AddRefs(uri));
     if(NS_FAILED(rv)) { aRv.Throw(rv); return; }
 
+    { // remove any existing policies
+      int numPolicies = 0;
+      nsresult rv = csp->GetPolicyCount(&numPolicies);
+      if (NS_SUCCEEDED(rv)) {
+        for (int i=numPolicies-1; i>=0; i--)
+          csp->RemovePolicy(i);
+      }
+    }
     csp->AppendPolicy(policy, uri, false, true);
     rv = mPrincipal->SetCsp(csp);
     if(NS_FAILED(rv)) { aRv.Throw(rv); return; }

@@ -226,6 +226,15 @@ RefineCompartmentSandboxPolicies(JSCompartment *compartment, JSContext *cx)
   doc->SetSandboxFlags(flags);
 
   // Refine policy of the csp object (may not be new)
+  { // remove any existing policies
+    // TODO: keep original -- from header -- CSP policies
+    int numPolicies = 0;
+    nsresult rv = csp->GetPolicyCount(&numPolicies);
+    if (NS_SUCCEEDED(rv)) {
+      for (int i=numPolicies-1; i>=0; i--)
+        csp->RemovePolicy(i);
+    }
+  }
   csp->AppendPolicy(policy, baseURI, false, true);
   // set CSP  since we created a new principal
   rv = compPrincipal->SetCsp(csp);
