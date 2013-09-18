@@ -9,7 +9,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/Label.h"
-#include "mozilla/dom/FreshPrincipal.h"
+#include "mozilla/dom/Privilege.h"
 #include "mozilla/dom/SandboxBinding.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
@@ -123,7 +123,7 @@ public: // DOM interface =====================================================
   }
   JS::Value GetResult(JSContext* cx, ErrorResult& aRv);
 
-  void Grant(JSContext* cx, mozilla::dom::FreshPrincipal& principal);
+  void Grant(JSContext* cx, mozilla::dom::Privilege& priv);
 public: 
   // C++ only
   // FIXME: these should not really be public
@@ -172,13 +172,14 @@ public: // Static DOM interface ==============================================
   // Get underlying pricipal
   static void GetPrincipal(const GlobalObject& global, JSContext* cx, nsString& retval); 
 
-  // Ownership
-  static already_AddRefed<Label> GetPrivileges(const GlobalObject& global,
-                                               JSContext* cx);
+  // Take ownership of privilege
+  static void Own(const GlobalObject& global, JSContext* cx, 
+                  mozilla::dom::Privilege& priv);
 
-  // Take ownership of principal
-  static void Own(const GlobalObject& global, JSContext *cx,
-                  mozilla::dom::FreshPrincipal& principal);
+  static already_AddRefed<Privilege> Privileges(const GlobalObject& global, JSContext* cx);
+
+  static void SetPrivileges(const GlobalObject& global, JSContext* cx,
+                            mozilla::dom::Privilege& priv, ErrorResult& aRv);
 
 
   //misc

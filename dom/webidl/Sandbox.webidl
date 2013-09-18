@@ -33,8 +33,8 @@ interface Sandbox {
   // Read sandbox result
   [GetterThrows] readonly attribute any result;
 
-  // Grant sandbox ownership of fresh principal
-  void grant(FreshPrincipal principal);
+  // Grant sandbox ownership of privilege
+  void grant(Privilege priv);
 
   // Static ==================================================================
   //TODO: move into partial interface
@@ -76,11 +76,11 @@ interface Sandbox {
   // Get the compartment principal, stringified
   static DOMString getPrincipal();
 
-  // Add principal to ownership list
-  static void own(FreshPrincipal principal);
+  // Add privilege to underlying
+  static void own(Privilege priv);
 
   // Get the underlying privileges
-  static Label? getPrivileges();
+  [SetterThrows] static attribute Privilege privileges;
 
   // misc
 

@@ -7,6 +7,7 @@
 #include "mozilla/dom/Sandbox.h"
 #include "mozilla/dom/RoleBinding.h"
 #include "mozilla/dom/LabelBinding.h"
+#include "mozilla/dom/PrivilegeBinding.h"
 #include "mozilla/dom/SandboxBinding.h"
 #include "nsContentUtils.h"
 #include "nsIContentSecurityPolicy.h"
@@ -29,7 +30,7 @@ static inline JSObject* getGlobalJSObject(const GlobalObject& global);
 static void JSErrorResult(JSContext *cx, ErrorResult& aRv, const char *msg);
 // Helper for adding fresh principal to privilege ownership list of
 // compartment
-static void own(JSContext *, JSCompartment *, mozilla::dom::FreshPrincipal&);
+static void own(JSCompartment *, mozilla::dom::Privilege&);
 // Helper for fetching a script from a url; guarding such that the
 // fetch does not leak information
 static void
@@ -560,11 +561,11 @@ Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
   return mResult;
 }
 void 
-Sandbox::Grant(JSContext* cx, mozilla::dom::FreshPrincipal& principal)
+Sandbox::Grant(JSContext* cx, mozilla::dom::Privilege& priv)
 {
   JSCompartment* compartment = js::GetContextCompartment(cx);
   MOZ_ASSERT(compartment);
-  own(cx, compartment, principal);
+  own(compartment, priv);
 }
 
 inline void
@@ -847,24 +848,35 @@ Sandbox::GetTrustClearance(const GlobalObject& global, JSContext* cx)
 
 #undef GET_LABEL
 
-// Get underlying freh principal privileges, which means all but the
-// underlying compartment privileges
-already_AddRefed<Label>
-Sandbox::GetPrivileges(const GlobalObject& global, JSContext* cx)
+// Get underlying privileges
+already_AddRefed<Privilege>
+Sandbox::Privileges(const GlobalObject& global, JSContext* cx)
+{
+  JSCompartment *compartment =
+    js::GetObjectCompartment(getGlobalJSObject(global));
+
+  if (!xpc::sandbox::IsCompartmentSandboxed(compartment)) 
+    return nullptr;
+
+  // copy compartment privileges
+  nsRefPtr<Label> privL =
+    xpc::sandbox::GetCompartmentPrivileges(compartment);
+
+  if (!privL) return nullptr;
+  nsRefPtr<Privilege> privs = new Privilege(*privL);
+  return privs.forget();
+}
+
+void 
+Sandbox::SetPrivileges(const GlobalObject& global, JSContext* cx,
+                       mozilla::dom::Privilege& priv, ErrorResult& aRv)
 {
   EnableSandbox(global, cx);
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
-
-  nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
-
-  ErrorResult aRv;
-  privs = privs->Clone(aRv);
-
-  if (aRv.Failed())
-    privs = new Label(); // empty privileges
-
-  return privs.forget();
+  nsRefPtr<Label> newPrivs = priv.GetAsLabel(aRv);
+  if (aRv.Failed()) return;
+  SANDBOX_CONFIG(compartment).SetPrivileges(newPrivs);
 }
 
 
@@ -1014,26 +1026,25 @@ Sandbox::GetPrincipal(const GlobalObject& global, JSContext* cx, nsString& retva
 
 //helper function
 static void
-own(JSContext *cx, JSCompartment *compartment,
-    mozilla::dom::FreshPrincipal& principal) {
-  nsCOMPtr<nsIPrincipal> p = principal.Principal();
-  nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
-  mozilla::ErrorResult  aRv;
-  privs->_And(p, aRv);
-
-  //js::RecomputeWrappers(cx, js::AllCompartments(), js::AllCompartments());
+own(JSCompartment *compartment,
+    mozilla::dom::Privilege& priv) {
+  ErrorResult aRv;
+  nsRefPtr<Label> newPrivs = priv.GetAsLabel(aRv);
+  if (aRv.Failed()) return;
+  nsRefPtr<Label> curPrivs = SANDBOX_CONFIG(compartment).GetPrivileges();
+  curPrivs->_And(*newPrivs, aRv);
 }
 
 void
 Sandbox::Own(const GlobalObject& global, JSContext* cx,
-             mozilla::dom::FreshPrincipal& principal)
+             mozilla::dom::Privilege& priv)
 {
   EnableSandbox(global, cx);
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
 
   MOZ_ASSERT(compartment);
-  own(cx, compartment, principal);
+  own(compartment, priv);
 }
 
 JS::Value
@@ -1080,7 +1091,21 @@ Sandbox::SandboxGetPrivilege(JSContext *cx,
                              JS::HandleObject obj, JS::HandleId id,
                              JS::MutableHandleValue vp)
 {
-  vp.set(JS::Int32Value(42));
+  JSCompartment *compartment = js::GetContextCompartment(cx);
+  nsCOMPtr<nsIPrincipal> privPrin = xpc::GetCompartmentPrincipal(compartment);
+  nsRefPtr<Role> privRole = new Role(privPrin);
+  ErrorResult aRv;
+  nsRefPtr<Label> privLabel = new Label(*privRole, aRv);
+  nsRefPtr<Privilege> privs = new Privilege(*privLabel);
+
+  JS::Rooted<JS::Value> v(cx);
+  JS::Rooted<JSObject*> global(cx, JS::CurrentGlobalOrNull(cx));
+  nsresult rv = nsContentUtils::WrapNative(cx, global, privs, v.address());
+  if (NS_FAILED(rv)) {
+    vp.set(JS::UndefinedValue());
+    return false;
+  }
+  vp.set(v);
   return true;
 }
 
@@ -1227,6 +1252,7 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
       JS::Heap<JSObject*> * pAI = GetProtoAndIfaceArray(sandboxObj);
       mozilla::dom::RoleBinding::CreateInterfaceObjects(cx, sandboxObj, pAI, true);
       mozilla::dom::LabelBinding::CreateInterfaceObjects(cx, sandboxObj, pAI, true );
+      mozilla::dom::PrivilegeBinding::CreateInterfaceObjects(cx, sandboxObj, pAI, true );
       mozilla::dom::SandboxBinding::CreateInterfaceObjects(cx, sandboxObj, pAI, true);
     }
     //TODO: check if any of these fail

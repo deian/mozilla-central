@@ -96,7 +96,6 @@ webidl_files = \
   FileRequest.webidl \
   FocusEvent.webidl \
   FormData.webidl \
-  FreshPrincipal.webidl \
   Function.webidl \
   GainNode.webidl \
   Geolocation.webidl \
@@ -239,6 +238,7 @@ webidl_files = \
   PluginArray.webidl \
   Position.webidl \
   PositionError.webidl \
+  Privilege.webidl \
   ProcessingInstruction.webidl \
   Promise.webidl \
   PushManager.webidl \

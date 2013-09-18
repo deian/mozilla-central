@@ -59,7 +59,6 @@ static PRLogModuleInfo* gCspPRLog;
 using namespace mozilla;
 using namespace mozilla::dom;
 
-
 //////////////////////////////////////////////////////////////
 // Per-request data structure
 //////////////////////////////////////////////////////////////
@@ -826,7 +825,6 @@ nsScriptLoader::ProcessRequest(nsScriptLoadRequest* aRequest, void **aOffThreadT
     aRequest->mElement->GetScriptText(textData);
 
     script = &textData;
-
   }
   else {
     script = &aRequest->mScriptText;
@@ -957,7 +955,6 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
                                const nsAFlatString& aScript,
                                void** aOffThreadToken)
 {
-  printf("!!!  nsScriptLoader::EvaluateScript\n");
   nsresult rv = NS_OK;
 
   // We need a document to evaluate scripts.
@@ -1009,7 +1006,7 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
 
     // Attach privilege to global, if privilged script
     if (MOZ_UNLIKELY(isPrivilegedScript)) {
-      JS_DefineProperty(cx, global, "__sandboxPrivilege", JSVAL_VOID,
+      JS_DefineProperty(cx, global, "__privilege__", JSVAL_VOID,
                         Sandbox::SandboxGetPrivilege, NULL,
                         JSPROP_ENUMERATE | JSPROP_SHARED);
     }
@@ -1022,7 +1019,7 @@ nsScriptLoader::EvaluateScript(nsScriptLoadRequest* aRequest,
 
     // Detach privilege from global, if privilged script
     if (MOZ_UNLIKELY(isPrivilegedScript)) {
-      JS_DeleteProperty(cx, global, "__sandboxPrivilege");
+      JS_DeleteProperty(cx, global, "__privilege__");
     }
 
   }

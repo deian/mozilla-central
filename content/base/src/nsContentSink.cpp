@@ -339,6 +339,9 @@ nsContentSink::ProcessHeaderData(nsIAtom* aHeader, const nsAString& aValue,
       }
     }
   }
+  else if (aHeader == nsGkAtoms::documentLabel) {
+    // TODO: parse and set the document label
+  }
 
   return rv;
 }
