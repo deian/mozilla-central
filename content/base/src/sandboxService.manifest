@@ -1,0 +1,2 @@
+component {9760c598-42b3-4a65-9ae2-2dac1d453f1b} sandboxService.js
+contract @mozilla.org/sandboxservice;1 {9760c598-42b3-4a65-9ae2-2dac1d453f1b}
