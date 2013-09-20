@@ -9,23 +9,12 @@ const Cu = Components.utils;
 
 Cu.import("resource://gre/modules/XPCOMUtils.jsm");
 
-function SandboxService() {
-  this._isInitialized = false;
-}
+function SandboxInitializer() { }
 
-SandboxService.prototype = {
-  classID:          Components.ID("{9760c598-42b3-4a65-9ae2-2dac1d453f1b}"),
-  QueryInterface:   XPCOMUtils.generateQI([Ci.nsISandboxService]),
-  _xpcom_categories: [ { service: true } ],
+SandboxInitializer.prototype = {
+  classID:          Components.ID("{3c41623d-0a4f-4c80-9173-17bb2ade241d}"),
+  QueryInterface:   XPCOMUtils.generateQI([Ci.nsISandboxInitializer]),
   
-
-  get isInitialized() {
-    return this._isInitialized;
-  },
-
-  set isInitialized (init) {
-    this._isInitialized = init;
-  },
   /**
    * Labels are expected to have the form:
    * [ [ "p1", "p2", ...] , [ "q1", "q2", ...], ...]
@@ -44,23 +33,22 @@ SandboxService.prototype = {
     return label;
   },
   init : function(win, jsonLabel) {
-    win.console.log("Got JSON label: "+jsonLabel);
-    if (this._isInitialized)
-      return false;
+    //win.console.log("Got JSON label: "+jsonLabel);
 
     try {
       var label = this._parseLabel(win, jsonLabel);
-      win.Sandbox.enableSandbox();
+      if (win.Sandbox.enableSandboxed()) {
+        label.and(win.Sandbox.getPrivacyLabel());
+      }
       win.Sandbox.setPrivacyLabel(label);
-      this._isInitialized = true;
-      win.console.log("Initialized sandbox-mode: "+label);
+      //win.console.log("Initialized sandbox-mode: "+label);
       return true;
     } catch(e) {
-      win.console.log("Failed to initialize Sandbox: "+e);
+      //win.console.log("Failed to initialize Sandbox: "+e);
       return false;
     }
   }
 };
 
-var components = [SandboxService];
-this.NSGetFactory = XPCOMUtils.generateNSGetFactory([SandboxService]);
+var components = [SandboxInitializer];
+this.NSGetFactory = XPCOMUtils.generateNSGetFactory([SandboxInitializer]);

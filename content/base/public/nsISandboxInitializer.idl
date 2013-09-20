@@ -7,16 +7,14 @@
 interface Label;
 interface nsIDOMWindow;
 
-[scriptable, uuid(d7adf267-32de-4c03-b5e6-74d4fe21b225)]
-interface nsISandboxService : nsISupports
+[scriptable, uuid(e36b23fc-e985-4de6-8b31-859d7aec16fc)]
+interface nsISandboxInitializer : nsISupports
 {
   /**
-   * Set to true when the document label is set.
-   */
-  attribute boolean isInitialized;
-
-  /**
-   * Parse a label.
+   * Set a label to the given window, if the label is properly
+   * fomatted.
+   * Labels are expected to have the form:
+   * [ [ "p1", "p2", ...] , [ "q1", "q2", ...], ...]
    */
   boolean init(in nsIDOMWindow aWin, in AString jsonLabel);
 };

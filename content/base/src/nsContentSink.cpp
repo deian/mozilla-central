@@ -49,7 +49,7 @@
 #include "nsIObserverService.h"
 #include "mozilla/Preferences.h"
 #include "nsParserConstants.h"
-#include "nsISandboxService.h"
+#include "nsISandboxInitializer.h"
 
 using namespace mozilla;
 
@@ -345,8 +345,8 @@ nsContentSink::ProcessHeaderData(nsIAtom* aHeader, const nsAString& aValue,
 
     nsCOMPtr<nsIDOMWindow> window = do_QueryInterface(mDocument->GetWindow());
     if (window) {
-      nsCOMPtr<nsISandboxService> sbox =
-        do_GetService("@mozilla.org/sandboxservice;1", &rv);
+      nsCOMPtr<nsISandboxInitializer> sbox =
+        do_CreateInstance("@mozilla.org/sandboxinitializer;1", &rv);
       if (NS_FAILED(rv)) {
         return rv;
       }

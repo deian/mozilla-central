@@ -20,7 +20,7 @@ XPIDL_SOURCES += [
     'nsIImageLoadingContent.idl',
     'nsIMessageManager.idl',
     'nsIObjectLoadingContent.idl',
-    'nsISandboxService.idl',
+    'nsISandboxInitializer.idl',
     'nsIScriptLoaderObserver.idl',
     'nsISelection.idl',
     'nsISelectionController.idl',
