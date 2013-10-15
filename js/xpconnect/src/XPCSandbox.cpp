@@ -46,6 +46,13 @@ EnableCompartmentSandbox(JSCompartment *compartment,
 
   if (sandbox) {
     SANDBOX_CONFIG(compartment).SetSandbox(sandbox);
+
+    // set empty privileges
+
+    nsRefPtr<Label> privileges = new Label();
+    MOZ_ASSERT(privileges);
+
+    SANDBOX_CONFIG(compartment).SetPrivileges(privileges);
   } else { // sandbox-mode
     nsRefPtr<Label> privacy = new Label();
     MOZ_ASSERT(privacy);
@@ -55,14 +62,17 @@ EnableCompartmentSandbox(JSCompartment *compartment,
 
     SANDBOX_CONFIG(compartment).SetPrivacyLabel(privacy);
     SANDBOX_CONFIG(compartment).SetTrustLabel(trust);
+
+    // set privileges to compartment principal
+    // we're not "copying" the principal since the principal may be a
+    // null principal (iframe sandbox) and thus not a codebase principal
+    nsCOMPtr<nsIPrincipal> privPrin = GetCompartmentPrincipal(compartment);
+    nsRefPtr<Role> privRole = new Role(privPrin);
+    ErrorResult aRv;
+    nsRefPtr<Label> privileges = new Label(*privRole, aRv);
+    MOZ_ASSERT(privileges);
+    SANDBOX_CONFIG(compartment).SetPrivileges(privileges);
   }
-
-  // set empty privileges, use privileged script tag to
-  // get __sandboxPrivileges
-  nsRefPtr<Label> privileges = new Label();
-  MOZ_ASSERT(privileges);
-
-  SANDBOX_CONFIG(compartment).SetPrivileges(privileges);
 }
 
 NS_EXPORT_(bool)
