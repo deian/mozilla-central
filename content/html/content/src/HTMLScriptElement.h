@@ -74,7 +74,6 @@ public:
   void SetCrossOrigin(const nsAString& aCrossOrigin, ErrorResult& rv);
   bool Async();
   void SetAsync(bool aValue, ErrorResult& rv);
-  bool Privileged();
 
 protected:
   virtual JSObject* WrapNode(JSContext *aCx,
