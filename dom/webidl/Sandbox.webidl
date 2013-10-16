@@ -34,6 +34,13 @@ interface Sandbox {
   [GetterThrows] readonly attribute any result;
 
   // Grant sandbox ownership of privilege
+  // Since granting privileges results in changing the privileges of
+  // the sandbox, we can only do this if the current label flows to
+  // the label of the sandbox. Moreover, this function cannot fail if
+  // that is not the case.
+  //
+  // TODO: We should really change this into a postMessage-like
+  // interface: grant/ongrant
   void grant(Privilege priv);
 
   // Static ==================================================================

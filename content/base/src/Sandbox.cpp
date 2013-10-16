@@ -181,6 +181,7 @@ already_AddRefed<Sandbox>
 Sandbox::Constructor(const GlobalObject& global, 
                      JSContext* cx, ErrorResult& aRv)
 {
+  EnableSandbox(global, cx);
   nsRefPtr<Sandbox> sandbox = new Sandbox();
   if (!sandbox) {
     aRv = NS_ERROR_OUT_OF_MEMORY;
@@ -563,9 +564,32 @@ Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
 void 
 Sandbox::Grant(JSContext* cx, mozilla::dom::Privilege& priv)
 {
+  //TODO change to a grant/ongrant API
+
   JSCompartment* compartment = js::GetContextCompartment(cx);
   MOZ_ASSERT(compartment);
-  own(compartment, priv);
+
+  nsRefPtr<Label> curPrivacy =
+    xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
+  nsRefPtr<Label> curTrust   =
+    xpc::sandbox::GetCompartmentTrustLabel(compartment);
+  nsRefPtr<Label> curPrivs   =
+    xpc::sandbox::GetCompartmentPrivileges(compartment);
+
+  if (!curPrivacy || ! curTrust ||
+      // current context cannot write to remote context
+      !mPrivacy->Subsumes(*curPrivs, *curPrivacy) ||
+      !curTrust->Subsumes(*curPrivs, *mTrust))
+    return;
+
+  // get compartment of the sandbox take ownership
+  JSCompartment* sandboxCompartment =
+    js::GetObjectCompartment(js::UncheckedUnwrap(mSandboxObj));
+
+  // Take ownership
+  // XXX Again, once we move to a grant/ongrant API we let the sandbox
+  // decide whether it wants to have these privileges or not.
+  own(sandboxCompartment, priv);
 }
 
 inline void
