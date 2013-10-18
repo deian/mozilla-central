@@ -458,6 +458,26 @@ Sandbox::PostMessage(JSContext* cx, JS::Handle<JS::Value> message,
 {
   aRv.MightThrowJSException();
 
+  { // check that we can write to the sandbox
+      JSCompartment* compartment = js::GetContextCompartment(cx);
+      MOZ_ASSERT(compartment);
+
+      nsRefPtr<Label> curPrivacy =
+        xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
+      nsRefPtr<Label> curTrust   =
+        xpc::sandbox::GetCompartmentTrustLabel(compartment);
+      nsRefPtr<Label> curPrivs   =
+        xpc::sandbox::GetCompartmentPrivileges(compartment);
+
+      if (!curPrivacy || ! curTrust ||
+          // current context cannot write to remote context
+          !mPrivacy->Subsumes(*curPrivs, *curPrivacy) ||
+          !curTrust->Subsumes(*curPrivs, *mTrust)) {
+        JSErrorResult(cx, aRv, "Cannot write to sandbox.");
+        return;
+      }
+  }
+
   // clear message
   ClearMessage();
 
@@ -470,20 +490,28 @@ Sandbox::PostMessage(JSContext* cx, JS::Handle<JS::Value> message,
 
   if (!WriteStructuredClone(cx, v, buffer, data.mClosure)) {
     JSErrorResult(cx, aRv,
-        "PostMessage: Argument must be a structurally clonable object.");
+        "postMessage: Argument must be a structurally clonable object.");
     return;
-  } else {
+  } 
+
+  {
+    // enter sandbox compartment
+    JS::RootedObject sandboxObj(cx, js::UncheckedUnwrap(mSandboxObj));
+    JSAutoRequest req(cx);
+    JSAutoCompartment ac(cx, sandboxObj);
+
     data.mData = buffer.data();
     data.mDataLength = buffer.nbytes();
 
     MOZ_ASSERT(ReadStructuredClone(cx, data, v.address())); // buffer->object
+
+    // Set the message
+    SetMessage(v);
+
+    // Dispatch event to the sandbox onmessage handler
+    DispatchSandboxOnmessageEvent(aRv);
+
   }
-
-  // Set the message
-  SetMessage(v);
-
-  // Dispatch event to the sandbox onmessage handler
-  DispatchSandboxOnmessageEvent(aRv);
 }
 
 void
@@ -554,13 +582,64 @@ Sandbox::SetCurrentTrust(mozilla::dom::Label* aLabel)
 
 JS::Value
 Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
-  // Wrap the result
-  if (!JS_WrapValue(cx, mResult.unsafeGet())) {
+  aRv.MightThrowJSException();
+
+  {
+    //TODO: reduce copy-paste shared with OnDone
+    JSCompartment *compartment = js::GetContextCompartment(cx);
+    MOZ_ASSERT(compartment);
+
+
+    if (MOZ_UNLIKELY(!xpc::sandbox::IsCompartmentSandboxed(compartment)))
+      xpc::sandbox::EnableCompartmentSandbox(compartment);
+
+    nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
+
+    // raises current label
+    if (!xpc::sandbox::GuardRead(compartment, *mPrivacy,*mTrust,
+          privs, cx, true)) {
+      JSErrorResult(cx, aRv, "Cannot read from sandbox.");
+      return JSVAL_VOID;
+    }
+  }
+
+  // TODO (optimization): should not need to structurally clone the
+  // object all we want to do is copy it from sandbox compartment to
+  // parent
+
+  StructuredCloneData data;
+  JSAutoStructuredCloneBuffer buffer;
+
+
+  {
+    // enter sandbox compartment
+    JS::RootedObject sandboxObj(cx, js::UncheckedUnwrap(mSandboxObj));
+    JSAutoRequest req(cx);
+    JSAutoCompartment ac(cx, sandboxObj);
+
+    if (!WriteStructuredClone(cx, mResult, buffer, data.mClosure)) {
+      JS_ReportError(cx, "Cannot clone underlying object.");
+      return JSVAL_VOID;
+    }
+  }
+  // in outer compartment:
+
+  data.mData = buffer.data();
+  data.mDataLength = buffer.nbytes();
+
+  JS::RootedValue v(cx);
+  MOZ_ASSERT(ReadStructuredClone(cx, data, v.address())); // buffer->object
+
+  /*XXX
+  if (!JS_WrapValue(cx, v.address())) {
     JSErrorResult(cx, aRv, "Failed to wrap message.");
     return JSVAL_VOID;
   }
-  return mResult;
+  */
+
+  return v;
 }
+
 void 
 Sandbox::Grant(JSContext* cx, mozilla::dom::Privilege& priv)
 {
@@ -590,6 +669,46 @@ Sandbox::Grant(JSContext* cx, mozilla::dom::Privilege& priv)
   // XXX Again, once we move to a grant/ongrant API we let the sandbox
   // decide whether it wants to have these privileges or not.
   own(sandboxCompartment, priv);
+}
+
+void 
+Sandbox::AttachObject(JSContext* cx, JS::Handle<JSObject*> aObj,
+                      const nsAString& name, ErrorResult& aRv)
+{
+  aRv.MightThrowJSException();
+
+  // unwrap the object
+  JS::RootedObject obj(cx, js::UncheckedUnwrap(aObj));
+
+  {
+    // get the unwrapped sandbox object and enter its compartment
+    JS::RootedObject sandboxObj(cx, js::UncheckedUnwrap(mSandboxObj));
+    JSAutoRequest req(cx);
+    JSAutoCompartment ac(cx, sandboxObj);
+
+    // wrap the :bject
+    if (!JS_WrapObject(cx, obj.address())) {
+      JSErrorResult(cx, aRv, "Failed to wrap object.");
+      return;
+    }
+
+    JS::RootedString objName(cx, JS_NewStringCopyZ(cx, ToNewUTF8String(name)));
+    JS::RootedId id(cx);
+    if (!JS_ValueToId(cx, StringValue(objName), id.address())) {
+      JSErrorResult(cx, aRv, "Failed tomap name to id");
+      return;
+    }
+
+
+    if (!JS_DefinePropertyById(cx, sandboxObj, id, JS::ObjectValue(*obj),
+                               JS_PropertyStub, JS_StrictPropertyStub,
+                               JSPROP_ENUMERATE)) {
+      JSErrorResult(cx, aRv, "Failed to attach object to sandbox.");
+      return;
+    }
+  }
+
+
 }
 
 inline void
@@ -629,11 +748,13 @@ bool
 Sandbox::SetMessageToHandle(JSContext *cx, JS::MutableHandleValue vp)
 {
   // Wrap the message
+  /*
   if (!JS_WrapValue(cx, mMessage.unsafeGet())) {
     ClearMessage();
     JS_ReportError(cx, "Failed to wrap message.");
     return false;
   }
+  */
   vp.set(mMessage);
   return true;
 }
@@ -929,12 +1050,12 @@ SandboxDone(JSContext *cx, unsigned argc, jsval *vp)
     JS_ReportError(cx,
         "SandboxDone: Argument must be a structurally clonable object.");
     return false;
-  } else {
-    data.mData = buffer.data();
-    data.mDataLength = buffer.nbytes();
-
-    MOZ_ASSERT(ReadStructuredClone(cx, data, v.address())); // buffer->object
   }
+
+  data.mData = buffer.data();
+  data.mDataLength = buffer.nbytes();
+
+  MOZ_ASSERT(ReadStructuredClone(cx, data, v.address())); // buffer->object
 
   // Set the result in the sandbox
 
@@ -1026,7 +1147,6 @@ SandboxGetMessage(JSContext *cx, JS::HandleObject obj, JS::HandleId id,
   // Raise label of sandbox
   sandbox->RaiseLabel();
 
-  // Wrap and set the result
   return sandbox->SetMessageToHandle(cx, vp);
 }
 
@@ -1159,10 +1279,12 @@ Sandbox::DispatchResult(JSContext* cx)
     return true;
 
   // Wrap the result
+  /*
   if (!JS_WrapValue(cx, mResult.unsafeGet())) {
     ClearResult();
     return false;
   }
+  */
 
   nsCOMPtr<nsIDOMEvent> event;
   nsresult rv = nsEventDispatcher::CreateEvent(this, nullptr, nullptr,
@@ -1357,10 +1479,10 @@ Sandbox::EvalInSandbox(JSContext *cx, const nsAString& source, ErrorResult &aRv)
           MOZ_ASSERT(!ok);
           JS_ClearPendingException(sandcx);
         }
-    }
 
-    if (!ok)
-      SetResult(v, ResultError);
+        if (!ok)
+          SetResult(v, ResultError);
+    }
 
     // back on caller context
     if (!DispatchResult(cx))

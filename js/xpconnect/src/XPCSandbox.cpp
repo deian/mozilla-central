@@ -360,8 +360,10 @@ GuardRead(JSCompartment *compartment,
           JSContext *cx,
           bool doTaint)
 {
-  if (!sandbox::IsCompartmentSandboxed(compartment))
+  if (!sandbox::IsCompartmentSandboxed(compartment)) {
+    NS_WARNING("Not sandboxed!\n");
     return false;
+  }
 
   ErrorResult aRv;
 
@@ -373,13 +375,15 @@ GuardRead(JSCompartment *compartment,
     xpc::sandbox::GetCompartmentTrustLabel(compartment);
 
   // If any of the labels are missing, don't allow the information flow
-  if (!compPrivacy || !compTrust)
+  if (!compPrivacy || !compTrust) {
+    NS_WARNING("Missing labels!\n");
     return false;
+  }
 
 
   // <privacy,trust> [=_privs <compPrivacy,compTrust>
   if (compPrivacy->Subsumes(*privs, privacy) && 
-      trust.Subsumes(*privs, *compTrust)) 
+      trust.Subsumes(*privs, *compTrust))
     return true;
 
   // Compartment cannot directly read data, see if we can taint be to
@@ -420,6 +424,7 @@ GuardRead(JSCompartment *compartment,
     } 
   }
 
+  NS_WARNING("Does not subsume, taint not allowed!\n");
   return false;
 }
 
@@ -429,18 +434,20 @@ GuardRead(JSCompartment *compartment,
 // For this to be safe we must not allow a compartment to read the
 // label of a non-sandbox, i.e., sandbox-mode, compartment.
 NS_EXPORT_(bool)
-GuardRead(JSCompartment *compartment, JSCompartment *source, bool isRead)
+GuardRead(JSCompartment *compartment, JSCompartment *source, bool isGET)
 {
-  //isRead = true:  compartment is reading from source
-  //isRead = false: source is writing to compartment
+  //isGET = true:  compartment is reading from source
+  //               use compartment privs
+  //isGET = false: source is writing to compartment
+  //               use source privs
 
 
-  //No information exchange between a non-sandboxed and sandboxed compartment
-  if (!sandbox::IsCompartmentSandboxed(compartment))
+  // No information exchange between a non-sandboxed and sandboxed compartment
+  if (!sandbox::IsCompartmentSandboxed(compartment) ||
+      !sandbox::IsCompartmentSandboxed(source)) {
+    NS_WARNING("One of the compartments is not sandboxed");
     return false;
-
-  if (!sandbox::IsCompartmentSandboxed(compartment))
-    sandbox::EnableCompartmentSandbox(compartment);
+  }
 
   bool sandbox = sandbox::IsCompartmentSandbox(source);
 
@@ -453,9 +460,12 @@ GuardRead(JSCompartment *compartment, JSCompartment *source, bool isRead)
     sandbox ? xpc::sandbox::GetCompartmentTrustClearance(source)
             : xpc::sandbox::GetCompartmentTrustLabel(source);
 
-  if (!privacy || !trust) return false;
+  if (!privacy || !trust) {
+    NS_WARNING("Missing privacy or trust labels");
+    return false;
+  }
 
-  nsRefPtr<Label> privs = isRead ?
+  nsRefPtr<Label> privs = isGET ?
                           GetCompartmentPrivileges(compartment):
                           GetCompartmentPrivileges(source);
 

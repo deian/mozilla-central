@@ -455,11 +455,6 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
     RootedId id(cx, idArg);
     RootedObject wrapped(cx, Wrapper::wrappedObject(wrapper));
 
-    if (act == Wrapper::SET) {
-        NS_WARNING("SET is not allowed");
-        return false;
-    }
-
     bool isPostMessage = false;
     {
         const char *name;
@@ -473,6 +468,21 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
 
         if (JSID_IS_STRING(id))
             isPostMessage = IsPostMessage(name,JSID_TO_FLAT_STRING(id));
+
+#if 0
+        printf("SandboxPolicy::check id=%s ", name); 
+        if (JSID_IS_STRING(id)) {
+        size_t propLength=0;
+        const jschar *propChars =
+            JS_GetInternedStringCharsAndLength(
+                    JS_FORGET_STRING_FLATNESS(JSID_TO_FLAT_STRING(id)),
+                    &propLength);
+        for (size_t i=0;i<propLength;i++) {
+            printf("%c", propChars[i]);
+        }
+        }
+        printf("\n");
+#endif
     }
 
 
@@ -502,10 +512,47 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         }
     } 
 
-    bool res = sandbox::GuardRead(toCompartment, fromCompartment,
-                                  !isPostMessage /* rev to/from */);
+#if 0
+    {
+        printf("SandboxPolicy::check %s\n", 
+                act == Wrapper::SET ? "SET" :
+                act == Wrapper::CALL ? "CALL" : "GET");
+        {
+            char *origin;
+            GetCompartmentPrincipal(fromCompartment)->GetOrigin(&origin);
+            printf("SandboxPolicy::check %s ", origin); 
+            nsMemory::Free(origin);
+        }
+        {
+            char *origin;
+            GetCompartmentPrincipal(toCompartment)->GetOrigin(&origin);
+            printf(" to %s\n\n", origin); 
+            nsMemory::Free(origin);
+        }
+    }
+#endif
 
-    return res;
+    if (!isPostMessage) {
+        //set or call ==> READ & WRITE with privs of the fromCompartment
+        // fromCompartment [=_from toCompartment
+        if (sandbox::GuardRead(toCompartment, fromCompartment, true)) {
+            // toCompartment [=_from fromCompartment
+            bool ok = sandbox::GuardRead(fromCompartment, toCompartment, false);
+            if (!ok)
+                NS_WARNING("Read/write guard failed");
+            return ok;
+        }
+        NS_WARNING("Read/write guard failed");
+        return false;
+    } else { // is postMessage
+        bool ok = sandbox::GuardRead(toCompartment, fromCompartment, 
+                                  act == Wrapper::GET);
+                // /* useFromCompartmentPrivs = */ !isPostMessage);
+        if (!ok)
+            NS_WARNING("postMessage read guard failed");
+        return ok;
+    }
+
 }
 
 } // namespace xpc

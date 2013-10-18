@@ -124,6 +124,12 @@ public: // DOM interface =====================================================
   JS::Value GetResult(JSContext* cx, ErrorResult& aRv);
 
   void Grant(JSContext* cx, mozilla::dom::Privilege& priv);
+
+
+  // attach window object
+  void AttachObject(JSContext* cx, JS::Handle<JSObject*> aObj,
+                    const nsAString& name, ErrorResult& aRv);
+
 public: 
   // C++ only
   // FIXME: these should not really be public
@@ -192,11 +198,6 @@ public: // privileged scripts
   static bool SandboxGetPrivilege(JSContext *cx,
                                   JS::HandleObject obj, JS::HandleId id,
                                   JS::MutableHandleValue vp);
-
-
-
-public: // TODO REMOVE =======================================================
-  JSObject* GetSandbox(JSContext* cx) const { return mSandboxObj; }
 
 public: // Internal ==========================================================
 

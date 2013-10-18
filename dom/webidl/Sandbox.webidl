@@ -43,6 +43,9 @@ interface Sandbox {
   // interface: grant/ongrant
   void grant(Privilege priv);
 
+  // Attach object into the sandbox as window
+  [Throws] void attachObject(object aObj, DOMString name);
+
   // Static ==================================================================
   //TODO: move into partial interface
 
@@ -95,9 +98,6 @@ interface Sandbox {
   [Throws] static any import(DOMString aURL);
 
   // Static ==================================================================
-
-  // temporary*********************************************************
-  readonly attribute object getSandbox;
 
 
 };
