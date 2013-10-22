@@ -458,25 +458,8 @@ Sandbox::PostMessage(JSContext* cx, JS::Handle<JS::Value> message,
 {
   aRv.MightThrowJSException();
 
-  { // check that we can write to the sandbox
-      JSCompartment* compartment = js::GetContextCompartment(cx);
-      MOZ_ASSERT(compartment);
-
-      nsRefPtr<Label> curPrivacy =
-        xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
-      nsRefPtr<Label> curTrust   =
-        xpc::sandbox::GetCompartmentTrustLabel(compartment);
-      nsRefPtr<Label> curPrivs   =
-        xpc::sandbox::GetCompartmentPrivileges(compartment);
-
-      if (!curPrivacy || ! curTrust ||
-          // current context cannot write to remote context
-          !mPrivacy->Subsumes(*curPrivs, *curPrivacy) ||
-          !curTrust->Subsumes(*curPrivs, *mTrust)) {
-        JSErrorResult(cx, aRv, "Cannot write to sandbox.");
-        return;
-      }
-  }
+  // check that we can write to sandbox, but fail silently
+  if (!GuardWriteOnly(cx)) return;
 
   // clear message
   ClearMessage();
@@ -640,11 +623,10 @@ Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
   return v;
 }
 
-void 
-Sandbox::Grant(JSContext* cx, mozilla::dom::Privilege& priv)
-{
-  //TODO change to a grant/ongrant API
-
+// Returns true if writing to the sandbox is allowerd
+// I.e. the current label flows to the label of the sandbox
+bool
+Sandbox::GuardWriteOnly(JSContext* cx) const {
   JSCompartment* compartment = js::GetContextCompartment(cx);
   MOZ_ASSERT(compartment);
 
@@ -659,15 +641,28 @@ Sandbox::Grant(JSContext* cx, mozilla::dom::Privilege& priv)
       // current context cannot write to remote context
       !mPrivacy->Subsumes(*curPrivs, *curPrivacy) ||
       !curTrust->Subsumes(*curPrivs, *mTrust))
-    return;
+    return false;
 
-  // get compartment of the sandbox take ownership
-  JSCompartment* sandboxCompartment =
+  return true;
+}
+
+void 
+Sandbox::Grant(JSContext* cx, mozilla::dom::Privilege& priv)
+{
+  //TODO change to a grant/ongrant API
+
+  // check that we can write to sandbox, but fail silently
+  if (!GuardWriteOnly(cx)) return;
+
+  // get the unwrapped sandbox object and enter its compartment
+  JSCompartment* sandboxCompartment = 
     js::GetObjectCompartment(js::UncheckedUnwrap(mSandboxObj));
 
   // Take ownership
-  // XXX Again, once we move to a grant/ongrant API we let the sandbox
-  // decide whether it wants to have these privileges or not.
+  // TODO: Again, once we move to a grant/ongrant API we let the
+  // sandbox decide whether it wants to have these privileges or not.
+
+  // own clones the underlying privilege
   own(sandboxCompartment, priv);
 }
 
@@ -676,6 +671,9 @@ Sandbox::AttachObject(JSContext* cx, JS::Handle<JSObject*> aObj,
                       const nsAString& name, ErrorResult& aRv)
 {
   aRv.MightThrowJSException();
+
+  // check that we can write to sandbox, but fail silently
+  if (!GuardWriteOnly(cx)) return;
 
   // unwrap the object
   JS::RootedObject obj(cx, js::UncheckedUnwrap(aObj));
@@ -769,6 +767,7 @@ Sandbox::EnableSandbox(const GlobalObject& global, JSContext *cx)
 
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
   xpc::sandbox::EnableCompartmentSandbox(compartment);
 
   /*
@@ -782,6 +781,7 @@ Sandbox::IsSandboxed(const GlobalObject& global)
 {
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
   return xpc::sandbox::IsCompartmentSandboxed(compartment);
 }
 
@@ -790,6 +790,7 @@ Sandbox::IsSandbox(const GlobalObject& global)
 {
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
   return xpc::sandbox::IsCompartmentSandbox(compartment);
 }
 
@@ -798,6 +799,7 @@ Sandbox::IsSandboxMode(const GlobalObject& global)
 {
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
   return xpc::sandbox::IsCompartmentSandboxMode(compartment);
 }
 
@@ -812,6 +814,7 @@ Sandbox::SetPrivacyLabel(const GlobalObject& global, JSContext* cx,
 
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
 
 
   nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
@@ -845,6 +848,7 @@ Sandbox::SetPrivacyLabel(const GlobalObject& global, JSContext* cx,
   do {                                                                    \
     JSCompartment *compartment =                                          \
       js::GetObjectCompartment(getGlobalJSObject(global));                \
+    MOZ_ASSERT(compartment);                                              \
     nsRefPtr<Label> l = xpc::sandbox::GetCompartment##name(compartment);  \
                                                                           \
     if (!l) return nullptr;                                               \
@@ -867,6 +871,7 @@ Sandbox::SetTrustLabel(const GlobalObject& global, JSContext* cx,
 
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
 
   nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
@@ -916,6 +921,7 @@ Sandbox::SetPrivacyClearance(const GlobalObject& global, JSContext* cx,
 
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
 
   nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
@@ -961,6 +967,7 @@ Sandbox::SetTrustClearance(const GlobalObject& global, JSContext* cx,
 
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
 
   nsRefPtr<Label> privs = xpc::sandbox::GetCompartmentPrivileges(compartment);
 
@@ -997,18 +1004,23 @@ Sandbox::GetTrustClearance(const GlobalObject& global, JSContext* cx)
 already_AddRefed<Privilege>
 Sandbox::Privileges(const GlobalObject& global, JSContext* cx)
 {
+  EnableSandbox(global, cx);
+
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
-
-  if (!xpc::sandbox::IsCompartmentSandboxed(compartment)) 
-    return nullptr;
+  MOZ_ASSERT(compartment);
 
   // copy compartment privileges
   nsRefPtr<Label> privL =
     xpc::sandbox::GetCompartmentPrivileges(compartment);
 
-  if (!privL) return nullptr;
-  nsRefPtr<Privilege> privs = new Privilege(*privL);
+  nsRefPtr<Privilege> privs;
+
+  if (!privL) 
+    return nullptr;
+
+  privs = new Privilege(*privL);
+
   return privs.forget();
 }
 
@@ -1019,6 +1031,7 @@ Sandbox::SetPrivileges(const GlobalObject& global, JSContext* cx,
   EnableSandbox(global, cx);
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
   nsRefPtr<Label> newPrivs = priv.GetAsLabel(aRv);
   if (aRv.Failed()) return;
   SANDBOX_CONFIG(compartment).SetPrivileges(newPrivs);
@@ -1157,6 +1170,7 @@ Sandbox::GetPrincipal(const GlobalObject& global, JSContext* cx, nsString& retva
   retval = NS_LITERAL_STRING("");
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
 
   nsIPrincipal* prin = xpc::GetCompartmentPrincipal(compartment);
   if (!prin) return;
@@ -1170,10 +1184,11 @@ Sandbox::GetPrincipal(const GlobalObject& global, JSContext* cx, nsString& retva
 
 //helper function
 static void
-own(JSCompartment *compartment,
-    mozilla::dom::Privilege& priv) {
+own(JSCompartment *compartment, mozilla::dom::Privilege& priv) {
+  MOZ_ASSERT(xpc::sandbox::IsCompartmentSandboxed(compartment));
   ErrorResult aRv;
   nsRefPtr<Label> newPrivs = priv.GetAsLabel(aRv);
+  MOZ_ASSERT(!aRv.Failed());
   if (aRv.Failed()) return;
   nsRefPtr<Label> curPrivs = SANDBOX_CONFIG(compartment).GetPrivileges();
   curPrivs->_And(*newPrivs, aRv);
@@ -1186,6 +1201,7 @@ Sandbox::Own(const GlobalObject& global, JSContext* cx,
   EnableSandbox(global, cx);
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
 
   MOZ_ASSERT(compartment);
   own(compartment, priv);
@@ -1207,6 +1223,7 @@ Sandbox::Import(const GlobalObject& global, JSContext* cx,
   // get compartment principal
   JSCompartment *compartment =
     js::GetObjectCompartment(getGlobalJSObject(global));
+  MOZ_ASSERT(compartment);
 
   nsIPrincipal* prin = xpc::GetCompartmentPrincipal(compartment);
   if (!prin) { 
@@ -1230,28 +1247,6 @@ Sandbox::Import(const GlobalObject& global, JSContext* cx,
   return v;
 }
 
-bool
-Sandbox::SandboxGetPrivilege(JSContext *cx,
-                             JS::HandleObject obj, JS::HandleId id,
-                             JS::MutableHandleValue vp)
-{
-  JSCompartment *compartment = js::GetContextCompartment(cx);
-  nsCOMPtr<nsIPrincipal> privPrin = xpc::GetCompartmentPrincipal(compartment);
-  nsRefPtr<Role> privRole = new Role(privPrin);
-  ErrorResult aRv;
-  nsRefPtr<Label> privLabel = new Label(*privRole, aRv);
-  nsRefPtr<Privilege> privs = new Privilege(*privLabel);
-
-  JS::Rooted<JS::Value> v(cx);
-  JS::Rooted<JSObject*> global(cx, JS::CurrentGlobalOrNull(cx));
-  nsresult rv = nsContentUtils::WrapNative(cx, global, privs, v.address());
-  if (NS_FAILED(rv)) {
-    vp.set(JS::UndefinedValue());
-    return false;
-  }
-  vp.set(v);
-  return true;
-}
 
 // Internal ==================================================================
 
@@ -1400,6 +1395,10 @@ Sandbox::Init(const GlobalObject& global, JSContext* cx, ErrorResult& aRv)
     JS::RootedObject sandboxObj(cx, js::UncheckedUnwrap(mSandboxObj));
     JSAutoRequest req(cx);
     JSAutoCompartment ac(cx, sandboxObj);
+
+    JSCompartment *compartment = js::GetObjectCompartment(sandboxObj);
+    xpc::sandbox::EnableCompartmentSandbox(compartment, this);
+
     mEventTarget = new SandboxEventTarget();
 
     {
@@ -1430,8 +1429,7 @@ Sandbox::EvalInSandbox(JSContext *cx, const nsAString& source, ErrorResult &aRv)
     ClearResult();
 
     JS::RootedObject sandbox(cx, js::UncheckedUnwrap(mSandboxObj));
-    if (!sandbox) { aRv.Throw(NS_ERROR_INVALID_ARG); return; }
-
+    if (!sandbox) { aRv.Throw(NS_ERROR_INVALID_ARG); return; } 
     nsIScriptObjectPrincipal *sop =
         (nsIScriptObjectPrincipal*)xpc_GetJSPrivate(sandbox);
     if (!sop) {
@@ -1497,15 +1495,6 @@ JSObject*
 getGlobalJSObject(const GlobalObject& global)
 {
   return global.Get();
-  /* old:
-  nsCOMPtr<nsIGlobalObject> nsGlob = do_QueryInterface(global.Get());
-  if (!nsGlob) {
-    NS_ASSERTION(nsGlob, "QI should return global object");
-    return nullptr;
-
-  }
-  return nsGlob->GetGlobalJSObject();
-  */
 }
 
 // Helper for setting the ErrorResult to a string.  This function

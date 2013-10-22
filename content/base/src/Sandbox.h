@@ -194,11 +194,6 @@ public: // Static DOM interface ==============================================
   static JS::Value Import(const GlobalObject& global, JSContext* cx,
                           const nsAString& aURL, ErrorResult& aRv);
 
-public: // privileged scripts
-  static bool SandboxGetPrivilege(JSContext *cx,
-                                  JS::HandleObject obj, JS::HandleId id,
-                                  JS::MutableHandleValue vp);
-
 public: // Internal ==========================================================
 
   // Raise sandbox and compartment labels
@@ -213,6 +208,9 @@ public: // Internal ==========================================================
                               mozilla::ErrorResult& aRv);
   // Dispatch the onmessage event _in_ the sandbox
   void DispatchSandboxOnmessageEvent(ErrorResult& aRv);
+
+  // check if current label flow to label of sandbox
+  bool GuardWriteOnly(JSContext* cx) const;
 
 protected: // Unsafe functions ===============================================
   // These functions are part of the trusted computing base and should

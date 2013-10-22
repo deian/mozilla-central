@@ -381,6 +381,25 @@ GuardRead(JSCompartment *compartment,
   }
 
 
+#if 0
+  {
+    nsAutoString compPrivacyStr, compTrustStr, privacyStr, trustStr, privsStr;
+    compPrivacy->Stringify(compPrivacyStr);
+    compTrust->Stringify(compTrustStr);
+    privacy.Stringify(privacyStr);
+    trust.Stringify(trustStr);
+    privs->Stringify(privsStr);
+
+    printf("GuardRead <%s,%s> to <%s,%s> | %s\n",
+           NS_ConvertUTF16toUTF8(privacyStr).get(),
+           NS_ConvertUTF16toUTF8(trustStr).get(),
+           NS_ConvertUTF16toUTF8(compPrivacyStr).get(),
+           NS_ConvertUTF16toUTF8(compTrustStr).get(),
+           NS_ConvertUTF16toUTF8(privsStr).get());
+  }
+#endif
+
+
   // <privacy,trust> [=_privs <compPrivacy,compTrust>
   if (compPrivacy->Subsumes(*privs, privacy) && 
       trust.Subsumes(*privs, *compTrust))

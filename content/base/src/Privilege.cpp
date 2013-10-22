@@ -80,6 +80,7 @@ Privilege::FreshPrivilege(const GlobalObject& global, ErrorResult& aRv)
   if (aRv.Failed()) return nullptr;
 
   nsRefPtr<Privilege> priv = new Privilege(*label);
+  if (!priv) return nullptr;
 
   return priv.forget();
 }
