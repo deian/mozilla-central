@@ -448,6 +448,28 @@ ComponentsObjectPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, W
     return false;
 }
 
+// Is compartment an addon-sdk content script
+static bool
+isAddonSDK(JSContext *cx, JSCompartment *compartment)
+{ 
+    RootedObject sandbox(cx, 
+            js::CheckedUnwrap(JS_GetGlobalForCompartmentOrNull(compartment)));
+    if (sandbox && xpc::IsSandbox(sandbox)) {
+        RootedValue metadata(cx);
+        nsresult rv = xpc::GetSandboxMetadata(cx, sandbox, &metadata);
+        if (NS_SUCCEEDED(rv) && metadata.isObject()) {
+            RootedObject obj(cx, &metadata.toObject());
+            RootedValue isAddon(cx);
+            if (JS_GetProperty(cx, obj, "isAddonSDK", &isAddon) &&
+                    JSVAL_IS_BOOLEAN(isAddon) &&
+                    JSVAL_TO_BOOLEAN(isAddon)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
 bool
 SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::Action act)
 {
@@ -528,6 +550,13 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
             return false;
         }
     } 
+
+    // Treat addons as trusted
+    // TODO: check sanity here
+    if (isAddonSDK(cx, toCompartment) || isAddonSDK(cx, fromCompartment)) {
+        return true;
+    }
+
 
     if (!isPostMessage) {
         //set or call ==> READ & WRITE with privs of the fromCompartment

@@ -17,6 +17,11 @@ const scriptLoader = Cc['@mozilla.org/moz/jssubscript-loader;1'].
  * URI string, DOMWindow or `null` for system principals.
  */
 function sandbox(target, options) {
+  options = options || {};
+  if (!options.metadata)
+    options.metadata = { isAddonSDK : true };
+  else
+    options.metadata.isAddonSDK = true;
   return Cu.Sandbox(target || systemPrincipal, options || {});
 }
 exports.sandbox = sandbox
