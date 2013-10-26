@@ -469,7 +469,7 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         if (JSID_IS_STRING(id))
             isPostMessage = IsPostMessage(name,JSID_TO_FLAT_STRING(id));
 
-#if 0
+#if 1
         printf("SandboxPolicy::check id=%s ", name); 
         if (JSID_IS_STRING(id)) {
         size_t propLength=0;
@@ -495,24 +495,7 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
                                      ? js::GetObjectCompartment(wrapped)
                                      : js::GetObjectCompartment(wrapper);
 
-    // Do not handle the case where the fromCompartment is 
-    // not a sandbox/sandbox-mode TODO:
-    if (!sandbox::IsCompartmentSandboxed(fromCompartment)) {
-        return false;
-    }
-
-    if (sandbox::IsCompartmentSandboxMode(toCompartment) &&
-        sandbox::IsCompartmentSandboxMode(fromCompartment)) {
-        // Both compartments are content
-
-        // Is this allowed by same origin policy? If not, do not allow it
-        if (!AccessCheck::isCrossOriginAccessPermitted(cx, wrapperArg, 
-                                                       idArg, act)) {
-            return false;
-        }
-    } 
-
-#if 0
+#if 1
     {
         printf("SandboxPolicy::check %s\n", 
                 act == Wrapper::SET ? "SET" :
@@ -531,6 +514,20 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         }
     }
 #endif
+
+
+    // neither one is a sandbox
+    if (sandbox::IsCompartmentSandboxMode(toCompartment) &&
+        sandbox::IsCompartmentSandboxMode(fromCompartment)) {
+        // Both compartments are content
+
+        // Is this allowed by same origin policy? If not, do not allow it
+        if (!AccessCheck::isCrossOriginAccessPermitted(cx, wrapperArg, 
+                                                       idArg, act)) {
+            NS_WARNING("Cross origin SOP check failed");
+            return false;
+        }
+    } 
 
     if (!isPostMessage) {
         //set or call ==> READ & WRITE with privs of the fromCompartment

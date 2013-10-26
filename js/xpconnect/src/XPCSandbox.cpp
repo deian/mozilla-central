@@ -327,14 +327,19 @@ DEFINE_GET_LABEL(TrustClearance)
 NS_EXPORT_(already_AddRefed<mozilla::dom::Label>)
 GetCompartmentPrivileges(JSCompartment*compartment)
 {
-  MOZ_ASSERT(sandbox::IsCompartmentSandboxed(compartment));
   ErrorResult aRv;
 
-  nsRefPtr<Label> privs = SANDBOX_CONFIG(compartment).GetPrivileges();
-  privs = privs->Clone(aRv);
+  nsRefPtr<Label> privs;
+  
+  if (sandbox::IsCompartmentSandboxed(compartment)) {
+    privs = SANDBOX_CONFIG(compartment).GetPrivileges();
+    privs = privs->Clone(aRv);
+  }
 
-  if (aRv.Failed())
+  if (!privs || aRv.Failed())
     privs = new Label(); // empty privileges
+
+
 
   return privs.forget();
 }
@@ -360,19 +365,24 @@ GuardRead(JSCompartment *compartment,
           JSContext *cx,
           bool doTaint)
 {
-  if (!sandbox::IsCompartmentSandboxed(compartment)) {
-    NS_WARNING("Not sandboxed!\n");
-    return false;
-  }
-
   ErrorResult aRv;
 
   nsRefPtr<Label> privs = aPrivs ? aPrivs : new Label();
+  nsRefPtr<mozilla::dom::Label> compPrivacy, compTrust;
 
-  nsRefPtr<mozilla::dom::Label> compPrivacy =
-    xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
-  nsRefPtr<mozilla::dom::Label> compTrust =
-    xpc::sandbox::GetCompartmentTrustLabel(compartment);
+  if (sandbox::IsCompartmentSandboxed(compartment)) {
+    compPrivacy = xpc::sandbox::GetCompartmentPrivacyLabel(compartment);
+    compTrust   = xpc::sandbox::GetCompartmentTrustLabel(compartment);
+  } else {
+    // compartment is not sandboxed
+    nsCOMPtr<nsIPrincipal> privPrin = GetCompartmentPrincipal(compartment);
+    nsRefPtr<Role> privRole = new Role(privPrin);
+    compPrivacy = new Label(*privRole, aRv);
+    compTrust   = new Label();
+    if (aRv.Failed()) return false;
+    // don't touch the compartment
+    doTaint = false;
+  }
 
   // If any of the labels are missing, don't allow the information flow
   if (!compPrivacy || !compTrust) {
@@ -381,7 +391,7 @@ GuardRead(JSCompartment *compartment,
   }
 
 
-#if 0
+#if 1
   {
     nsAutoString compPrivacyStr, compTrustStr, privacyStr, trustStr, privsStr;
     compPrivacy->Stringify(compPrivacyStr);
@@ -459,34 +469,53 @@ GuardRead(JSCompartment *compartment, JSCompartment *source, bool isGET)
   //               use compartment privs
   //isGET = false: source is writing to compartment
   //               use source privs
+#if 1
+    {
+        printf("GuardRead %s :", isGET ? "GET" : "SET");
+        {
+            char *origin;
+            uint32_t status = 0;
+            GetCompartmentPrincipal(source)->GetOrigin(&origin);
+            GetCompartmentPrincipal(source)->GetAppId(&status);
+            printf("%s [%x]", origin, status); 
+            nsMemory::Free(origin);
+        }
+        {
+            char *origin;
+            uint32_t status = 0;
+            GetCompartmentPrincipal(compartment)->GetOrigin(&origin);
+            GetCompartmentPrincipal(compartment)->GetAppId(&status);
+            printf(" to %s [%x]\n", origin, status); 
+            nsMemory::Free(origin);
+        }
+    }
+#endif
 
 
-  // No information exchange between a non-sandboxed and sandboxed compartment
-  if (!sandbox::IsCompartmentSandboxed(compartment) ||
-      !sandbox::IsCompartmentSandboxed(source)) {
-    NS_WARNING("One of the compartments is not sandboxed");
-    return false;
-  }
-
+  bool sandboxed = sandbox::IsCompartmentSandboxed(source);
   bool sandbox = sandbox::IsCompartmentSandbox(source);
 
   // When reading from sandbox, use the sandbox label, which is the
   // clearance.
-  nsRefPtr<mozilla::dom::Label> privacy =
-    sandbox ? xpc::sandbox::GetCompartmentPrivacyClearance(source)
-            : xpc::sandbox::GetCompartmentPrivacyLabel(source);
-  nsRefPtr<mozilla::dom::Label> trust =
-    sandbox ? xpc::sandbox::GetCompartmentTrustClearance(source)
-            : xpc::sandbox::GetCompartmentTrustLabel(source);
+  nsRefPtr<Label> privacy, trust;
 
-  if (!privacy || !trust) {
+  if (sandboxed) {
+    privacy = sandbox ? xpc::sandbox::GetCompartmentPrivacyClearance(source)
+                      : xpc::sandbox::GetCompartmentPrivacyLabel(source);
+    trust = sandbox ? xpc::sandbox::GetCompartmentTrustClearance(source)
+                    : xpc::sandbox::GetCompartmentTrustLabel(source);
+  } else {
+    privacy = new Label();
+    trust   = new Label();
+  }
+  nsRefPtr<Label> privs = isGET ? GetCompartmentPrivileges(compartment) 
+                                : GetCompartmentPrivileges(source);
+
+  if (!privacy || !trust || !privs) {
     NS_WARNING("Missing privacy or trust labels");
     return false;
   }
 
-  nsRefPtr<Label> privs = isGET ?
-                          GetCompartmentPrivileges(compartment):
-                          GetCompartmentPrivileges(source);
 
   return GuardRead(compartment, *privacy, *trust, privs);
 }
