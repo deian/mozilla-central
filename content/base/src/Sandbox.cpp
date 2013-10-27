@@ -1035,6 +1035,10 @@ Sandbox::SetPrivileges(const GlobalObject& global, JSContext* cx,
   nsRefPtr<Label> newPrivs = priv.GetAsLabel(aRv);
   if (aRv.Failed()) return;
   SANDBOX_CONFIG(compartment).SetPrivileges(newPrivs);
+  //RecomputeWrappers called by RefineSecurityPerimeter
+  if (IsSandboxMode(global)) {
+    xpc::sandbox::RefineCompartmentSandboxPolicies(compartment, cx);
+  }
 }
 
 
