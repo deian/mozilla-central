@@ -53,7 +53,9 @@ public:
 
   bool Equals(mozilla::dom::Label& other);
 
-  bool Subsumes(mozilla::dom::Label& other) { return Subsumes(other); }
+  bool Subsumes(mozilla::dom::Label& other) { 
+      return Subsumes(*static_cast<const mozilla::dom::Label*>(&other)); 
+  }
   bool Subsumes(const mozilla::dom::Label& other);
 
   already_AddRefed<Label> And(mozilla::dom::Role& role, ErrorResult& aRv);
