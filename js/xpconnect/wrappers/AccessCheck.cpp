@@ -558,7 +558,8 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
     }
 
 
-    if (!isPostMessage) {
+    if (!isPostMessage 
+        && !(sandbox::IsCompartmentSandbox(fromCompartment) && act == Wrapper::GET)) {
         //set or call ==> READ & WRITE with privs of the fromCompartment
         // fromCompartment [=_from toCompartment
         if (sandbox::GuardRead(toCompartment, fromCompartment, true)) {
@@ -570,7 +571,7 @@ SandboxPolicy::check(JSContext *cx, JSObject *wrapperArg, jsid idArg, Wrapper::A
         }
         NS_WARNING("Read/write guard failed");
         return false;
-    } else { // is postMessage
+    } else { // is postMessage, or we're reading from sandbox (thus definitely a read)
         bool ok = sandbox::GuardRead(toCompartment, fromCompartment, 
                                   act == Wrapper::GET);
                 // /* useFromCompartmentPrivs = */ !isPostMessage);
