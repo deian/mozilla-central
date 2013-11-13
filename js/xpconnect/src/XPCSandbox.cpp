@@ -391,7 +391,7 @@ GuardRead(JSCompartment *compartment,
   }
 
 
-#if 1
+#if 0
   {
     nsAutoString compPrivacyStr, compTrustStr, privacyStr, trustStr, privsStr;
     compPrivacy->Stringify(compPrivacyStr);
@@ -469,7 +469,7 @@ GuardRead(JSCompartment *compartment, JSCompartment *source, bool isGET)
   //               use compartment privs
   //isGET = false: source is writing to compartment
   //               use source privs
-#if 1
+#if 0
     {
         printf("GuardRead %s :", isGET ? "GET" : "SET");
         {

@@ -586,41 +586,12 @@ Sandbox::GetResult(JSContext* cx, ErrorResult& aRv) {
     }
   }
 
-  // TODO (optimization): should not need to structurally clone the
-  // object all we want to do is copy it from sandbox compartment to
-  // parent
-
-  StructuredCloneData data;
-  JSAutoStructuredCloneBuffer buffer;
-
-
-  {
-    // enter sandbox compartment
-    JS::RootedObject sandboxObj(cx, js::UncheckedUnwrap(mSandboxObj));
-    JSAutoRequest req(cx);
-    JSAutoCompartment ac(cx, sandboxObj);
-
-    if (!WriteStructuredClone(cx, mResult, buffer, data.mClosure)) {
-      JS_ReportError(cx, "Cannot clone underlying object.");
-      return JSVAL_VOID;
-    }
-  }
-  // in outer compartment:
-
-  data.mData = buffer.data();
-  data.mDataLength = buffer.nbytes();
-
-  JS::RootedValue v(cx);
-  MOZ_ASSERT(ReadStructuredClone(cx, data, v.address())); // buffer->object
-
-  /*XXX
-  if (!JS_WrapValue(cx, v.address())) {
+  if (!JS_WrapValue(cx, mResult.unsafeGet())) {
     JSErrorResult(cx, aRv, "Failed to wrap message.");
     return JSVAL_VOID;
   }
-  */
 
-  return v;
+  return mResult;
 }
 
 // Returns true if writing to the sandbox is allowerd
